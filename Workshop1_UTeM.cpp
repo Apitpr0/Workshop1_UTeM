@@ -5,10 +5,14 @@
 
 // Forward declaration of the function in dbconnection.cpp
 void test_db_connection();
+void show_login_page();
+void show_dashboard();
 
 int main()
 {
-    test_db_connection();
+	test_db_connection();
+	show_dashboard();
+	show_login_page();
     std::cout << "Hello World!\n";  
 }
 

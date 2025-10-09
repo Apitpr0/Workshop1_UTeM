@@ -18,10 +18,13 @@
     <ClCompile Include="Workshop1_UTeM.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="dbconnection.cpp">
-      <Filter>Header Files</Filter>
+    <ClCompile Include="loginpage.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="db\dbconnection.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="homepage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

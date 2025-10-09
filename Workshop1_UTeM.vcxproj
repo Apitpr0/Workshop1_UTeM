@@ -131,8 +131,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="dbconnection.cpp" />
     <ClCompile Include="db\dbconnection.cpp" />
+    <ClCompile Include="homepage.cpp" />
+    <ClCompile Include="loginpage.cpp" />
     <ClCompile Include="Workshop1_UTeM.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
