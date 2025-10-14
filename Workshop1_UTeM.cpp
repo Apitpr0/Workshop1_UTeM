@@ -2,18 +2,21 @@
 //
 
 #include <iostream>
+#include <cstdlib> // For system()
 
-// Forward declaration of the function in dbconnection.cpp
+// Forward declaration of the function in registerpage.cpp
+bool registerUser();
+
 void test_db_connection();
 void show_login_page();
 void show_dashboard();
 
 int main()
 {
-	test_db_connection();
-	show_dashboard();
-	show_login_page();
-    std::cout << "Hello World!\n";  
+    test_db_connection();
+    show_dashboard();
+    show_login_page();
+    registerUser(); // Call the registration page  
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu
