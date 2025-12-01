@@ -10,7 +10,7 @@ void test_db_connection()
         std::unique_ptr<sql::Connection> con(
             driver->connect("tcp://127.0.0.1:3306", "root", "")
         );
-        con->setSchema("test");
+        con->setSchema("erms");
         std::cout << "Connection to database succeeded!" << std::endl;
     }
     catch (sql::SQLException& e) {

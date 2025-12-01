@@ -24,11 +24,16 @@
     <ClCompile Include="db\dbconnection.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="homepage.cpp">
+    <ClCompile Include="dashboard.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="registerpage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="hash.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
