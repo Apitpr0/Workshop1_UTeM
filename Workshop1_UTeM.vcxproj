@@ -135,10 +135,12 @@
     <ClCompile Include="dashboard.cpp" />
     <ClCompile Include="loginpage.cpp" />
     <ClCompile Include="registerpage.cpp" />
+    <ClCompile Include="user_dashboard.cpp" />
     <ClCompile Include="Workshop1_UTeM.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="hash.h" />
+    <ClInclude Include="user_dashboard.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

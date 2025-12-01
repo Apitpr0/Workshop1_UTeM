@@ -2,14 +2,15 @@
 #include <iostream>
 #include <string>
 #include <memory>
+#include <tuple>
 #include <mysql_driver.h>
 #include <mysql_connection.h>
 #include <cppconn/prepared_statement.h>
 #include <cppconn/resultset.h>
 #include "hash.h"
 
-// Returns role if login successful: 0=user, 1=admin; -1 if failed
-int show_login_page() {
+// Returns {role, username}: role = 0=user, 1=admin, -1=failed
+std::tuple<int, std::string> show_login_page() {
     std::string username, password;
 
     std::cout << "\n=== Login Page ===\n";
@@ -35,15 +36,15 @@ int show_login_page() {
         if (res->next()) {
             int role = res->getInt("role");
             std::cout << "Login successful! Welcome, " << username << ".\n";
-            return role;
+            return { role, username };
         }
         else {
             std::cout << "Login failed! Invalid username or password.\n";
-            return -1;
+            return { -1, "" };
         }
     }
     catch (sql::SQLException& e) {
         std::cerr << "Database error: " << e.what() << std::endl;
-        return -1;
+        return { -1, "" };
     }
 }

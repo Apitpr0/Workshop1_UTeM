@@ -30,9 +30,15 @@
     <ClCompile Include="registerpage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="user_dashboard.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="hash.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="user_dashboard.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
