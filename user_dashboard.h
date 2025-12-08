@@ -12,3 +12,6 @@ void createNewErrand(const std::string& username);
 
 // User menu loop
 void user_menu(const std::string& username);
+
+// User menu
+void user_menu(const std::string& username);

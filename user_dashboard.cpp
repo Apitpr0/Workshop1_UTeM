@@ -1,4 +1,3 @@
-// user_dashboard.cpp
 #include <iostream>
 #include <string>
 #include <memory>
@@ -39,10 +38,7 @@ int getUserId(const std::string& username) {
 // ===== View errands =====
 void viewMyErrands(const std::string& username) {
     int userId = getUserId(username);
-    if (userId == -1) {
-        std::cout << "User not found!\n";
-        return;
-    }
+    if (userId == -1) { std::cout << "User not found!\n"; return; }
 
     std::cout << "\nFilter errands by status:\n";
     std::cout << "1. All\n2. Pending\n3. Assigned\n4. Completed\nEnter choice: ";
@@ -88,9 +84,7 @@ void viewMyErrands(const std::string& username) {
         }
         if (!hasErrands) std::cout << "No errands found!\n";
     }
-    catch (sql::SQLException& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
-    }
+    catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
 
 // ===== Create new errand =====
@@ -130,43 +124,61 @@ void createNewErrand(const std::string& username) {
 }
 
 // ===== Mark errand as completed =====
+// ===== Mark errand as completed =====
 void updateErrandStatus(const std::string& username) {
     int userId = getUserId(username);
     if (userId == -1) { std::cout << "User not found!\n"; return; }
-
-    // Show all errands first
-    viewMyErrands(username);
-
-    int errandId;
-    std::cout << "Enter the ID of the errand to mark as COMPLETED: ";
-    std::cin >> errandId;
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-
-    char confirm;
-    std::cout << "Are you sure you want to mark this errand as COMPLETED? (Y/N): ";
-    std::cin >> confirm;
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    if (confirm != 'Y' && confirm != 'y') { std::cout << "Operation canceled.\n"; return; }
 
     try {
         sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
         std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
         con->setSchema("erms");
 
+        // Show only Pending or Assigned errands
         std::unique_ptr<sql::PreparedStatement> pstmt(
             con->prepareStatement(
-                "UPDATE errands SET status='Completed' WHERE requester_id=? AND errand_id=?"
+                "SELECT errand_id, description, status FROM errands "
+                "WHERE requester_id=? AND (status='Pending' OR status='Assigned') "
+                "ORDER BY created_at DESC"
             )
         );
         pstmt->setInt(1, userId);
-        pstmt->setInt(2, errandId);
 
-        int updated = pstmt->executeUpdate();
+        std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+        std::cout << "\n--- Pending/Assigned Errands ---\n";
+        bool hasErrands = false;
+        while (res->next()) {
+            hasErrands = true;
+            std::cout << "ID: " << res->getInt("errand_id")
+                << " | Desc: " << res->getString("description")
+                << " | Status: " << res->getString("status") << "\n";
+        }
+        if (!hasErrands) { std::cout << "No pending or assigned errands to mark as completed.\n"; return; }
+
+        int errandId;
+        std::cout << "Enter the ID of the errand to mark as COMPLETED: ";
+        std::cin >> errandId;
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+        char confirm;
+        std::cout << "Are you sure you want to mark this errand as COMPLETED? (Y/N): ";
+        std::cin >> confirm;
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        if (confirm != 'Y' && confirm != 'y') { std::cout << "Operation canceled.\n"; return; }
+
+        std::unique_ptr<sql::PreparedStatement> updateStmt(
+            con->prepareStatement("UPDATE errands SET status='Completed' WHERE requester_id=? AND errand_id=?")
+        );
+        updateStmt->setInt(1, userId);
+        updateStmt->setInt(2, errandId);
+
+        int updated = updateStmt->executeUpdate();
         if (updated > 0) std::cout << "Errand marked as COMPLETED successfully!\n";
         else std::cout << "Errand not found or not linked to you!\n";
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
+
 
 // ===== Cancel pending errand =====
 void cancelPendingErrand(const std::string& username) {
@@ -179,9 +191,7 @@ void cancelPendingErrand(const std::string& username) {
         con->setSchema("erms");
 
         std::unique_ptr<sql::PreparedStatement> pstmt(
-            con->prepareStatement(
-                "SELECT errand_id, description FROM errands WHERE requester_id=? AND status='Pending'"
-            )
+            con->prepareStatement("SELECT errand_id, description FROM errands WHERE requester_id=? AND status='Pending'")
         );
         pstmt->setInt(1, userId);
 
@@ -190,8 +200,7 @@ void cancelPendingErrand(const std::string& username) {
         bool hasPending = false;
         while (res->next()) {
             hasPending = true;
-            std::cout << "ID: " << res->getInt("errand_id")
-                << " | Description: " << res->getString("description") << "\n";
+            std::cout << "ID: " << res->getInt("errand_id") << " | Description: " << res->getString("description") << "\n";
         }
         if (!hasPending) { std::cout << "No pending errands to cancel.\n"; return; }
     }
@@ -214,9 +223,7 @@ void cancelPendingErrand(const std::string& username) {
         con->setSchema("erms");
 
         std::unique_ptr<sql::PreparedStatement> pstmt(
-            con->prepareStatement(
-                "DELETE FROM errands WHERE requester_id=? AND errand_id=? AND status='Pending'"
-            )
+            con->prepareStatement("DELETE FROM errands WHERE requester_id=? AND errand_id=? AND status='Pending'")
         );
         pstmt->setInt(1, userId);
         pstmt->setInt(2, errandId);
@@ -228,7 +235,7 @@ void cancelPendingErrand(const std::string& username) {
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
 
-// ===== Summary stats =====
+// ===== View summary stats =====
 void viewSummaryStats(const std::string& username) {
     int userId = getUserId(username);
     if (userId == -1) { std::cout << "User not found!\n"; return; }
@@ -261,7 +268,7 @@ void viewSummaryStats(const std::string& username) {
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
 
-// ===== User menu (fully featured) =====
+// ===== Full user menu =====
 void user_menu(const std::string& username) {
     while (true) {
         std::cout << "\n=== User Dashboard ===\n";
@@ -273,8 +280,8 @@ void user_menu(const std::string& username) {
         std::cout << "0. Logout\nEnter choice: ";
         int choice = getMenuChoice(0, 5);
 
-        if (choice == 0) break;
         switch (choice) {
+        case 0: return;
         case 1: viewMyErrands(username); break;
         case 2: createNewErrand(username); break;
         case 3: updateErrandStatus(username); break;

@@ -1,19 +1,16 @@
-// loginpage.cpp
+#include "loginpage.h"
 #include <iostream>
-#include <string>
 #include <memory>
-#include <tuple>
 #include <mysql_driver.h>
 #include <mysql_connection.h>
 #include <cppconn/prepared_statement.h>
 #include <cppconn/resultset.h>
 #include "hash.h"
 
-// Returns {role, username}: role = 0=user, 1=admin, -1=failed
-std::tuple<int, std::string> show_login_page() {
+// Helper login function
+static std::tuple<int, std::string> loginWithRole(int expectedRole, const std::string& roleName) {
     std::string username, password;
-
-    std::cout << "\n=== Login Page ===\n";
+    std::cout << "\n=== " << roleName << " Login ===\n";
     std::cout << "Username: ";
     std::getline(std::cin, username);
     std::cout << "Password: ";
@@ -35,7 +32,11 @@ std::tuple<int, std::string> show_login_page() {
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
         if (res->next()) {
             int role = res->getInt("role");
-            std::cout << "Login successful! Welcome, " << username << ".\n";
+            if (role != expectedRole) {
+                std::cout << "Login failed! This account does not have " << roleName << " access.\n";
+                return { -1, "" };
+            }
+            std::cout << "Login successful! Welcome " << roleName << ", " << username << ".\n";
             return { role, username };
         }
         else {
@@ -48,3 +49,8 @@ std::tuple<int, std::string> show_login_page() {
         return { -1, "" };
     }
 }
+
+// Separate login functions
+std::tuple<int, std::string> user_login() { return loginWithRole(0, "User"); }
+std::tuple<int, std::string> admin_login() { return loginWithRole(1, "Admin"); }
+std::tuple<int, std::string> runner_login() { return loginWithRole(2, "Runner"); }

@@ -33,12 +33,24 @@
     <ClCompile Include="user_dashboard.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="admin_dashboard.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="hash.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="user_dashboard.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="loginpage.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dashboard.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="admin_dashboard.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

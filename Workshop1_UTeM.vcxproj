@@ -131,6 +131,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="admin_dashboard.cpp" />
     <ClCompile Include="db\dbconnection.cpp" />
     <ClCompile Include="dashboard.cpp" />
     <ClCompile Include="loginpage.cpp" />
@@ -139,7 +140,10 @@
     <ClCompile Include="Workshop1_UTeM.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="admin_dashboard.h" />
+    <ClInclude Include="dashboard.h" />
     <ClInclude Include="hash.h" />
+    <ClInclude Include="loginpage.h" />
     <ClInclude Include="user_dashboard.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
