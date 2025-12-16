@@ -35,6 +35,41 @@ int getUserId(const std::string& username) {
     }
 }
 
+// ===== Create quotation automatically =====
+void createQuotation(int errandId, double distance) {
+    try {
+        double basePricePerKm = 3.0; // RM3 per km
+        double runnerPercentage = 70.0;
+        double systemPercentage = 30.0;
+
+        double runnerFee = distance * basePricePerKm * (runnerPercentage / 100.0);
+        double systemFee = distance * basePricePerKm * (systemPercentage / 100.0);
+
+        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
+        con->setSchema("erms");
+
+        std::unique_ptr<sql::PreparedStatement> pstmt(
+            con->prepareStatement(
+                "INSERT INTO quotations(errand_id, base_price_per_km, distance_km, runner_percentage, system_percentage, runner_share, system_fee, status) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, 'Pending')"
+            )
+        );
+        pstmt->setInt(1, errandId);
+        pstmt->setDouble(2, basePricePerKm);
+        pstmt->setDouble(3, distance);
+        pstmt->setDouble(4, runnerPercentage);
+        pstmt->setDouble(5, systemPercentage);
+        pstmt->setDouble(6, runnerFee);
+        pstmt->setDouble(7, systemFee);
+        pstmt->execute();
+    }
+    catch (sql::SQLException& e) {
+        std::cerr << "Database error (createQuotation): " << e.what() << std::endl;
+    }
+}
+
+// ===== View my errands =====
 void viewMyErrands(const std::string& username) {
     int userId = getUserId(username);
     if (userId == -1) { std::cout << "User not found!\n"; return; }
@@ -107,8 +142,168 @@ void viewMyErrands(const std::string& username) {
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
 
+// ===== View quotations =====
+void viewQuotation(const std::string& username) {
+    int userId = getUserId(username);
+    if (userId == -1) { std::cout << "User not found!\n"; return; }
 
-// ===== Create new errand =====
+    try {
+        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
+        con->setSchema("erms");
+
+        std::unique_ptr<sql::PreparedStatement> pstmt(
+            con->prepareStatement(
+                "SELECT q.quote_id, q.errand_id, q.base_price_per_km, q.distance_km, "
+                "q.runner_percentage, q.system_percentage, q.runner_share, q.system_fee, q.status, q.transaction_id "
+                "FROM quotations q JOIN errands e ON q.errand_id = e.errand_id "
+                "WHERE e.requester_id=? ORDER BY q.quote_id DESC"
+            )
+        );
+        pstmt->setInt(1, userId);
+        std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+
+        std::cout << "\n=== Your Quotations ===\n";
+        bool hasQuote = false;
+        while (res->next()) {
+            hasQuote = true;
+            std::cout << "--------------------------------------------\n";
+            std::cout << "Quotation ID   : " << res->getInt("quote_id") << "\n";
+            std::cout << "Errand ID      : " << res->getInt("errand_id") << "\n";
+            std::cout << "Base Price/km  : RM " << std::fixed << std::setprecision(2) << res->getDouble("base_price_per_km") << "\n";
+            std::cout << "Distance       : " << res->getDouble("distance_km") << " km\n";
+            std::cout << "Runner %       : " << res->getDouble("runner_percentage") << "%\n";
+            std::cout << "System %       : " << res->getDouble("system_percentage") << "%\n";
+            std::cout << "Runner Fee     : RM " << res->getDouble("runner_share") << "\n";
+            std::cout << "System Fee     : RM " << res->getDouble("system_fee") << "\n";
+            std::cout << "Status         : " << res->getString("status") << "\n";
+            std::cout << "Transaction ID : " << (res->isNull("transaction_id") ? "N/A" : res->getString("transaction_id")) << "\n";
+            std::cout << "--------------------------------------------\n\n";
+        }
+        if (!hasQuote) std::cout << "No quotations found!\n";
+    }
+    catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
+}
+
+void makePayment(const std::string& username) {
+    int userId = getUserId(username);
+    if (userId == -1) {
+        std::cout << "User not found!\n";
+        return;
+    }
+
+    int quoteId;
+    std::cout << "Enter Quotation ID to pay: ";
+    std::cin >> quoteId;
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+    std::string cardNumber, expiryDate, cvv;
+    std::cout << "\n--- Payment Method: Credit / Debit Card ---\n";
+    std::cout << "Card Number (16 digits): ";
+    std::getline(std::cin, cardNumber);
+
+    std::cout << "Expiry Date (MM/YY): ";
+    std::getline(std::cin, expiryDate);
+
+    std::cout << "CVV (3 digits): ";
+    std::getline(std::cin, cvv);
+
+    if (cardNumber.length() < 12 || cvv.length() < 3) {
+        std::cout << "Invalid card details!\n";
+        return;
+    }
+
+    try {
+        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
+        con->setSchema("erms");
+
+        // Get quotation details
+        std::unique_ptr<sql::PreparedStatement> qStmt(
+            con->prepareStatement(
+                "SELECT errand_id, base_price_per_km, distance_km, "
+                "runner_percentage, system_percentage "
+                "FROM quotations WHERE quote_id=? AND status='Pending'"
+            )
+        );
+        qStmt->setInt(1, quoteId);
+
+        std::unique_ptr<sql::ResultSet> qRes(qStmt->executeQuery());
+        if (!qRes->next()) {
+            std::cout << "Quotation not found or already paid!\n";
+            return;
+        }
+
+        int errandId = qRes->getInt("errand_id");
+        double base = qRes->getDouble("base_price_per_km");
+        double distance = qRes->getDouble("distance_km");
+        double runnerPerc = qRes->getDouble("runner_percentage");
+        double systemPerc = qRes->getDouble("system_percentage");
+
+        double total = base * distance;
+        double runnerFee = total * runnerPerc / 100.0;
+        double systemFee = total * systemPerc / 100.0;
+
+        // Generate transaction ID
+        std::srand(static_cast<unsigned>(std::time(nullptr)));
+        std::string transactionId = "ERMS#" + std::to_string(100000 + std::rand() % 900000);
+
+        std::string payStatus = "Paid"; // gunakan variable, boleh extend nanti
+
+        // Insert payment
+        std::unique_ptr<sql::PreparedStatement> pStmt(
+            con->prepareStatement(
+                "INSERT INTO payments(quote_id, errand_id, price, pay_status, transaction_id) "
+                "VALUES(?, ?, ?, ?, ?)"
+            )
+        );
+        pStmt->setInt(1, quoteId);
+        pStmt->setInt(2, errandId);
+        pStmt->setDouble(3, total);
+        pStmt->setString(4, payStatus);
+        pStmt->setString(5, transactionId);
+        pStmt->execute();
+
+        // Update quotation
+        std::unique_ptr<sql::PreparedStatement> uStmt(
+            con->prepareStatement(
+                "UPDATE quotations SET status='Paid', "
+                "runner_share=?, system_fee=?, transaction_id=? "
+                "WHERE quote_id=?"
+            )
+        );
+        uStmt->setDouble(1, runnerFee);
+        uStmt->setDouble(2, systemFee);
+        uStmt->setString(3, transactionId);
+        uStmt->setInt(4, quoteId);
+        uStmt->executeUpdate();
+
+        // ================= RECEIPT =================
+        std::cout << "\n=====================================\n";
+        std::cout << "          ERMS PAYMENT RECEIPT        \n";
+        std::cout << "=====================================\n";
+        std::cout << "Transaction ID : " << transactionId << "\n";
+        std::cout << "Quotation ID   : " << quoteId << "\n";
+        std::cout << "Errand ID      : " << errandId << "\n";
+        std::cout << "-------------------------------------\n";
+        std::cout << "Base Price/km  : RM " << std::fixed << std::setprecision(2) << base << "\n";
+        std::cout << "Distance       : " << distance << " km\n";
+        std::cout << "-------------------------------------\n";
+        std::cout << "Total Paid     : RM " << total << "\n";
+        std::cout << "Runner (" << runnerPerc << "%)   : RM " << runnerFee << "\n";
+        std::cout << "System (" << systemPerc << "%)   : RM " << systemFee << "\n";
+        std::cout << "-------------------------------------\n";
+        std::cout << "Payment Status : " << payStatus << "\n";
+        std::cout << "Method         : Credit / Debit Card\n";
+        std::cout << "=====================================\n";
+
+    }
+    catch (sql::SQLException& e) {
+        std::cerr << "Database error: " << e.what() << std::endl;
+    }
+}
+
+// ===== Create new errand (with auto quotation) =====
 void createNewErrand(const std::string& username) {
     int userId = getUserId(username);
     if (userId == -1) { std::cout << "User not found!\n"; return; }
@@ -150,12 +345,43 @@ void createNewErrand(const std::string& username) {
         pstmt->setDouble(5, distance);
         pstmt->execute();
 
+        // Get last inserted errand ID
+        std::unique_ptr<sql::PreparedStatement> lastIdStmt(
+            con->prepareStatement("SELECT LAST_INSERT_ID() AS last_id")
+        );
+        std::unique_ptr<sql::ResultSet> res(lastIdStmt->executeQuery());
+        int lastErrandId = -1;
+        if (res->next()) lastErrandId = res->getInt("last_id");
+
+        if (lastErrandId != -1) {
+            createQuotation(lastErrandId, distance);
+        }
+
         std::cout << "New errand added successfully! Distance: "
             << std::fixed << std::setprecision(2) << distance << " km\n";
+
+        // Post-create option
+        int postChoice = 0;
+        while (true) {
+            std::cout << "\nWhat would you like to do next?\n";
+            std::cout << "1. View quotations\n2. Back to dashboard\nEnter choice: ";
+            if (std::cin >> postChoice && (postChoice == 1 || postChoice == 2)) {
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                break;
+            }
+            else {
+                std::cin.clear();
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                std::cout << "Invalid choice! Enter 1 or 2.\n";
+            }
+        }
+        if (postChoice == 1) viewQuotation(username);
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
 
+// ===== Update errand status, cancel, view summary as before =====
+// (Reuse existing functions: updateErrandStatus, cancelPendingErrand, viewSummaryStats)
 // ===== Update errand status =====
 void updateErrandStatus(const std::string& username) {
     int userId = getUserId(username);
@@ -214,7 +440,6 @@ void updateErrandStatus(const std::string& username) {
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
-
 // ===== Cancel pending errand =====
 void cancelPendingErrand(const std::string& username) {
     int userId = getUserId(username);
@@ -317,8 +542,10 @@ void user_menu(const std::string& username) {
         std::cout << "3. Mark an errand as completed\n";
         std::cout << "4. Cancel pending errand\n";
         std::cout << "5. View summary stats\n";
+        std::cout << "6. View quotations\n";
+        std::cout << "7. Make payment\n";
         std::cout << "0. Logout\nEnter choice: ";
-        int choice = getMenuChoice(0, 5);
+        int choice = getMenuChoice(0, 7);
 
         switch (choice) {
         case 0: return;
@@ -327,6 +554,8 @@ void user_menu(const std::string& username) {
         case 3: updateErrandStatus(username); break;
         case 4: cancelPendingErrand(username); break;
         case 5: viewSummaryStats(username); break;
+        case 6: viewQuotation(username); break;
+        case 7: makePayment(username); break;
         default: std::cout << "Invalid choice.\n";
         }
     }
