@@ -136,6 +136,7 @@
     <ClCompile Include="dashboard.cpp" />
     <ClCompile Include="loginpage.cpp" />
     <ClCompile Include="registerpage.cpp" />
+    <ClCompile Include="runner_dashboard.cpp" />
     <ClCompile Include="user_dashboard.cpp" />
     <ClCompile Include="Workshop1_UTeM.cpp" />
   </ItemGroup>
@@ -144,7 +145,9 @@
     <ClInclude Include="dashboard.h" />
     <ClInclude Include="hash.h" />
     <ClInclude Include="loginpage.h" />
+    <ClInclude Include="runner_dashboard.h" />
     <ClInclude Include="user_dashboard.h" />
+    <ClInclude Include="utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

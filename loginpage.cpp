@@ -10,43 +10,62 @@
 // Helper login function
 static std::tuple<int, std::string> loginWithRole(int expectedRole, const std::string& roleName) {
     std::string username, password;
-    std::cout << "\n=== " << roleName << " Login ===\n";
-    std::cout << "Username: ";
-    std::getline(std::cin, username);
-    std::cout << "Password: ";
-    std::getline(std::cin, password);
 
-    std::string hashedInput = hashPassword(password);
+    while (true) {
+        std::cout << "\n=== " << roleName << " Login ===\n";
 
-    try {
-        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-        std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
-        con->setSchema("erms");
-
-        std::unique_ptr<sql::PreparedStatement> pstmt(
-            con->prepareStatement("SELECT role FROM users WHERE name=? AND password=?")
-        );
-        pstmt->setString(1, username);
-        pstmt->setString(2, hashedInput);
-
-        std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
-        if (res->next()) {
-            int role = res->getInt("role");
-            if (role != expectedRole) {
-                std::cout << "Login failed! This account does not have " << roleName << " access.\n";
-                return { -1, "" };
+        // Username input with space check
+        while (true) {
+            std::cout << "Username: ";
+            std::getline(std::cin, username);
+            if (username.empty()) {
+                std::cout << "Username cannot be empty!\n";
             }
-            std::cout << "Login successful! Welcome " << roleName << ", " << username << ".\n";
-            return { role, username };
+            else if (username.find(' ') != std::string::npos) {
+                std::cout << "Username cannot contain spaces!\n";
+            }
+            else break; // valid username
         }
-        else {
-            std::cout << "Login failed! Invalid username or password.\n";
+
+        // Password input
+        std::cout << "Password: ";
+        std::getline(std::cin, password);
+        if (password.empty()) {
+            std::cout << "Password cannot be empty!\n";
+            continue; // loop back to username/password input
+        }
+
+        std::string hashedInput = hashPassword(password);
+
+        try {
+            sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+            std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
+            con->setSchema("erms");
+
+            std::unique_ptr<sql::PreparedStatement> pstmt(
+                con->prepareStatement("SELECT role FROM users WHERE name=? AND password=?")
+            );
+            pstmt->setString(1, username);
+            pstmt->setString(2, hashedInput);
+
+            std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+            if (res->next()) {
+                int role = res->getInt("role");
+                if (role != expectedRole) {
+                    std::cout << "Login failed! This account does not have " << roleName << " access.\n";
+                    return { -1, "" };
+                }
+                std::cout << "Login successful! Welcome " << roleName << ", " << username << ".\n";
+                return { role, username };
+            }
+            else {
+                std::cout << "Login failed! Invalid username or password.\n";
+            }
+        }
+        catch (sql::SQLException& e) {
+            std::cerr << "Database error: " << e.what() << std::endl;
             return { -1, "" };
         }
-    }
-    catch (sql::SQLException& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
-        return { -1, "" };
     }
 }
 

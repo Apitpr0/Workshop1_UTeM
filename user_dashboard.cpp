@@ -35,14 +35,25 @@ int getUserId(const std::string& username) {
     }
 }
 
-// ===== View errands =====
 void viewMyErrands(const std::string& username) {
     int userId = getUserId(username);
     if (userId == -1) { std::cout << "User not found!\n"; return; }
 
-    std::cout << "\nFilter errands by status:\n";
-    std::cout << "1. All\n2. Pending\n3. Assigned\n4. Completed\nEnter choice: ";
-    int filterChoice = getMenuChoice(1, 4);
+    int filterChoice = 0;
+    while (true) {
+        std::cout << "\nFilter errands by status:\n";
+        std::cout << "1. All\n2. Pending\n3. Assigned\n4. Completed\nEnter choice: ";
+        if (std::cin >> filterChoice && filterChoice >= 1 && filterChoice <= 4) {
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            break;
+        }
+        else {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid choice! Enter a number between 1 and 4.\n";
+        }
+    }
+
     std::string statusFilter = "";
     if (filterChoice == 2) statusFilter = "Pending";
     else if (filterChoice == 3) statusFilter = "Assigned";
@@ -56,14 +67,18 @@ void viewMyErrands(const std::string& username) {
         std::unique_ptr<sql::PreparedStatement> pstmt;
         if (statusFilter.empty()) {
             pstmt.reset(con->prepareStatement(
-                "SELECT errand_id, description, pickup_loc, dropoff_loc, distance, status, created_at "
-                "FROM errands WHERE requester_id=? ORDER BY created_at DESC"
+                "SELECT e.errand_id, e.description, e.pickup_loc, e.dropoff_loc, e.distance, e.status, e.created_at, "
+                "u.name AS runner_name "
+                "FROM errands e LEFT JOIN users u ON e.runner_id = u.user_id "
+                "WHERE e.requester_id=? ORDER BY e.created_at DESC"
             ));
         }
         else {
             pstmt.reset(con->prepareStatement(
-                "SELECT errand_id, description, pickup_loc, dropoff_loc, distance, status, created_at "
-                "FROM errands WHERE requester_id=? AND status=? ORDER BY created_at DESC"
+                "SELECT e.errand_id, e.description, e.pickup_loc, e.dropoff_loc, e.distance, e.status, e.created_at, "
+                "u.name AS runner_name "
+                "FROM errands e LEFT JOIN users u ON e.runner_id = u.user_id "
+                "WHERE e.requester_id=? AND e.status=? ORDER BY e.created_at DESC"
             ));
             pstmt->setString(2, statusFilter);
         }
@@ -79,13 +94,19 @@ void viewMyErrands(const std::string& username) {
                 << " | Pickup: " << res->getString("pickup_loc")
                 << " | Dropoff: " << res->getString("dropoff_loc")
                 << " | Distance: " << std::fixed << std::setprecision(2) << res->getDouble("distance") << " km"
-                << " | Status: " << res->getString("status")
-                << " | Created: " << res->getString("created_at") << "\n";
+                << " | Status: " << res->getString("status");
+            if (res->getString("status") == "Assigned") {
+                std::string runnerName = res->getString("runner_name");
+                if (runnerName.empty()) runnerName = "N/A";
+                std::cout << " | Runner: " << runnerName;
+            }
+            std::cout << " | Created: " << res->getString("created_at") << "\n";
         }
         if (!hasErrands) std::cout << "No errands found!\n";
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
+
 
 // ===== Create new errand =====
 void createNewErrand(const std::string& username) {
@@ -93,9 +114,20 @@ void createNewErrand(const std::string& username) {
     if (userId == -1) { std::cout << "User not found!\n"; return; }
 
     std::string desc, pickup, dropoff;
-    std::cout << "Enter errand description: "; std::getline(std::cin, desc);
-    std::cout << "Enter pickup location: "; std::getline(std::cin, pickup);
-    std::cout << "Enter dropoff location: "; std::getline(std::cin, dropoff);
+    do {
+        std::cout << "Enter errand description: "; std::getline(std::cin, desc);
+        if (desc.empty()) std::cout << "Description cannot be empty!\n";
+    } while (desc.empty());
+
+    do {
+        std::cout << "Enter pickup location: "; std::getline(std::cin, pickup);
+        if (pickup.empty()) std::cout << "Pickup location cannot be empty!\n";
+    } while (pickup.empty());
+
+    do {
+        std::cout << "Enter dropoff location: "; std::getline(std::cin, dropoff);
+        if (dropoff.empty()) std::cout << "Dropoff location cannot be empty!\n";
+    } while (dropoff.empty());
 
     std::srand(static_cast<unsigned>(std::time(nullptr)));
     double distance = 1.0 + static_cast<double>(std::rand()) / RAND_MAX * 19.0;
@@ -118,13 +150,13 @@ void createNewErrand(const std::string& username) {
         pstmt->setDouble(5, distance);
         pstmt->execute();
 
-        std::cout << "New errand added successfully! Distance: " << distance << " km\n";
+        std::cout << "New errand added successfully! Distance: "
+            << std::fixed << std::setprecision(2) << distance << " km\n";
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
 
-// ===== Mark errand as completed =====
-// ===== Mark errand as completed =====
+// ===== Update errand status =====
 void updateErrandStatus(const std::string& username) {
     int userId = getUserId(username);
     if (userId == -1) { std::cout << "User not found!\n"; return; }
@@ -134,37 +166,40 @@ void updateErrandStatus(const std::string& username) {
         std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
         con->setSchema("erms");
 
-        // Show only Pending or Assigned errands
         std::unique_ptr<sql::PreparedStatement> pstmt(
             con->prepareStatement(
                 "SELECT errand_id, description, status FROM errands "
-                "WHERE requester_id=? AND (status='Pending' OR status='Assigned') "
-                "ORDER BY created_at DESC"
+                "WHERE requester_id=? AND (status='Pending' OR status='Assigned') ORDER BY created_at DESC"
             )
         );
         pstmt->setInt(1, userId);
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
-        std::cout << "\n--- Pending/Assigned Errands ---\n";
         bool hasErrands = false;
+        std::cout << "\n--- Pending/Assigned Errands ---\n";
         while (res->next()) {
             hasErrands = true;
             std::cout << "ID: " << res->getInt("errand_id")
                 << " | Desc: " << res->getString("description")
                 << " | Status: " << res->getString("status") << "\n";
         }
-        if (!hasErrands) { std::cout << "No pending or assigned errands to mark as completed.\n"; return; }
+        if (!hasErrands) { std::cout << "No pending or assigned errands.\n"; return; }
 
         int errandId;
-        std::cout << "Enter the ID of the errand to mark as COMPLETED: ";
-        std::cin >> errandId;
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        while (true) {
+            std::cout << "Enter the ID of the errand to mark as COMPLETED: ";
+            if (std::cin >> errandId) { std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); break; }
+            else { std::cin.clear(); std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); std::cout << "Invalid input!\n"; }
+        }
 
         char confirm;
-        std::cout << "Are you sure you want to mark this errand as COMPLETED? (Y/N): ";
-        std::cin >> confirm;
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-        if (confirm != 'Y' && confirm != 'y') { std::cout << "Operation canceled.\n"; return; }
+        while (true) {
+            std::cout << "Are you sure you want to mark this errand as COMPLETED? (Y/N): ";
+            std::cin >> confirm; std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
+            else std::cout << "Invalid input! Enter Y or N.\n";
+        }
+        if (confirm == 'N' || confirm == 'n') { std::cout << "Operation canceled.\n"; return; }
 
         std::unique_ptr<sql::PreparedStatement> updateStmt(
             con->prepareStatement("UPDATE errands SET status='Completed' WHERE requester_id=? AND errand_id=?")
@@ -174,11 +209,11 @@ void updateErrandStatus(const std::string& username) {
 
         int updated = updateStmt->executeUpdate();
         if (updated > 0) std::cout << "Errand marked as COMPLETED successfully!\n";
-        else std::cout << "Errand not found or not linked to you!\n";
+        else std::cout << "Errand not found, not pending/assigned, or not linked to you!\n";
+
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
-
 
 // ===== Cancel pending errand =====
 void cancelPendingErrand(const std::string& username) {
@@ -196,26 +231,31 @@ void cancelPendingErrand(const std::string& username) {
         pstmt->setInt(1, userId);
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
-        std::cout << "\n--- Pending Errands ---\n";
         bool hasPending = false;
+        std::cout << "\n--- Pending Errands ---\n";
         while (res->next()) {
             hasPending = true;
-            std::cout << "ID: " << res->getInt("errand_id") << " | Description: " << res->getString("description") << "\n";
+            std::cout << "ID: " << res->getInt("errand_id") << " | Desc: " << res->getString("description") << "\n";
         }
-        if (!hasPending) { std::cout << "No pending errands to cancel.\n"; return; }
+        if (!hasPending) { std::cout << "No pending errands.\n"; return; }
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; return; }
 
     int errandId;
-    std::cout << "Enter the ID of the errand to cancel: ";
-    std::cin >> errandId;
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    while (true) {
+        std::cout << "Enter the ID of the errand to cancel: ";
+        if (std::cin >> errandId) { std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); break; }
+        else { std::cin.clear(); std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); std::cout << "Invalid input!\n"; }
+    }
 
     char confirm;
-    std::cout << "Are you sure you want to CANCEL this errand? (Y/N): ";
-    std::cin >> confirm;
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    if (confirm != 'Y' && confirm != 'y') { std::cout << "Operation canceled.\n"; return; }
+    while (true) {
+        std::cout << "Are you sure you want to CANCEL this errand? (Y/N): ";
+        std::cin >> confirm; std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
+        else std::cout << "Invalid input! Enter Y or N.\n";
+    }
+    if (confirm == 'N' || confirm == 'n') { std::cout << "Operation canceled.\n"; return; }
 
     try {
         sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();

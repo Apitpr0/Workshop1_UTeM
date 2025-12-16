@@ -7,6 +7,7 @@
 #include <mysql_driver.h>
 #include <mysql_connection.h>
 #include <cppconn/prepared_statement.h>
+#include <cppconn/resultset.h>
 #include "hash.h" // your SHA-256 hash function
 
 using namespace std;
@@ -19,11 +20,6 @@ const string RUNNER_ENROLLMENT_PASSWORD = "runner123";
 bool isValidEmail(const string& email) {
     const regex pattern(R"(^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$)");
     return regex_match(email, pattern);
-}
-
-bool isValidPhone(const string& phone) {
-    const regex pattern(R"(^\d{10,12}$)");
-    return regex_match(phone, pattern);
 }
 
 bool isValidName(const string& name) {
@@ -40,6 +36,27 @@ bool isValidPassword(const string& pw) {
     vector<string> blacklist = { "password","12345678","qwerty","admin" };
     for (auto& s : blacklist) if (pw == s) return false;
     return true;
+}
+
+// ===== International phone validation =====
+bool isValidPhoneIntl(const std::string& phone) {
+    if (phone.empty()) return false;
+    if (phone[0] == '+') {
+        for (size_t i = 1; i < phone.size(); ++i)
+            if (!isdigit(phone[i])) return false;
+    }
+    else {
+        for (char c : phone) if (!isdigit(c)) return false;
+    }
+    size_t digitsCount = (phone[0] == '+') ? phone.size() - 1 : phone.size();
+    return digitsCount >= 7 && digitsCount <= 15;
+}
+
+// Normalize phone for duplicate check
+std::string normalizePhone(const std::string& input) {
+    std::string num;
+    for (char c : input) if (isdigit(c)) num += c;
+    return num;
 }
 
 // ===== Registration function =====
@@ -111,33 +128,54 @@ bool registerUser() {
     }
 
     // ===== Contact Number =====
-    cout << "Enter contact number: ";
-    getline(cin, contactNumber);
-    while (!isValidPhone(contactNumber)) {
-        cout << "Invalid phone! 10-12 digits only. Re-enter: ";
-        getline(cin, contactNumber);
-    }
-
-    string hashedPassword = hashPassword(password);
-
-    // ===== Database insertion =====
     try {
         sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
         unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
         con->setSchema("erms");
 
+        while (true) {
+            cout << "Enter contact number (with optional +countrycode): ";
+            getline(cin, contactNumber);
+            if (!isValidPhoneIntl(contactNumber)) {
+                cout << "Invalid phone! Must be 7-15 digits, can start with +. Re-enter.\n";
+                continue;
+            }
+
+            // Check duplicate
+            unique_ptr<sql::PreparedStatement> checkStmt(
+                con->prepareStatement("SELECT c_number FROM users")
+            );
+            unique_ptr<sql::ResultSet> res(checkStmt->executeQuery());
+            bool duplicate = false;
+            string normalizedInput = normalizePhone(contactNumber);
+            while (res->next()) {
+                string existing = normalizePhone(res->getString("c_number"));
+                if (normalizedInput == existing) { duplicate = true; break; }
+            }
+
+            if (duplicate) {
+                cout << "This contact number is already registered! Enter another number.\n";
+                continue;
+            }
+
+            break; // Valid & unique
+        }
+
+        string hashedPassword = hashPassword(password);
+
         // Check duplicate email
-        unique_ptr<sql::PreparedStatement> checkStmt(
+        unique_ptr<sql::PreparedStatement> checkEmailStmt(
             con->prepareStatement("SELECT COUNT(*) AS count FROM users WHERE email=?")
         );
-        checkStmt->setString(1, email);
-        unique_ptr<sql::ResultSet> res(checkStmt->executeQuery());
-        res->next();
-        if (res->getInt("count") > 0) {
+        checkEmailStmt->setString(1, email);
+        unique_ptr<sql::ResultSet> resEmail(checkEmailStmt->executeQuery());
+        resEmail->next();
+        if (resEmail->getInt("count") > 0) {
             cout << "Email already registered! Registration aborted.\n";
             return false;
         }
 
+        // Insert user
         unique_ptr<sql::PreparedStatement> pstmt(
             con->prepareStatement("INSERT INTO users(name, password, email, c_number, role) VALUES (?, ?, ?, ?, ?)")
         );

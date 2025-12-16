@@ -2,6 +2,7 @@
 #include "dashboard.h"
 #include "user_dashboard.h"
 #include "admin_dashboard.h"
+#include "runner_dashboard.h"
 #include "loginpage.h"
 #include <iostream>
 #include <limits>
@@ -64,14 +65,17 @@ void show_dashboard() {
             std::tuple<int, std::string> loginResult = runner_login();
             int role = std::get<0>(loginResult);
             std::string username = std::get<1>(loginResult);
+
             if (role == 2) {
-                std::cout << "[Runner] Runner dashboard for " << username << " (to be implemented)...\n";
+                std::cout << "[Runner] Login successful! Welcome " << username << ".\n";
+                runner_menu(username);  // <-- Panggil dashboard baru di sini
             }
             else {
                 std::cout << "Login failed or wrong role.\n";
             }
             break;
         }
+
 
         case 4:
             registerUser();
