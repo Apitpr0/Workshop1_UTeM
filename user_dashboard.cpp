@@ -1,4 +1,4 @@
-#include <iostream>
+﻿#include <iostream>
 #include <string>
 #include <memory>
 #include <cppconn/prepared_statement.h>
@@ -145,45 +145,63 @@ void viewMyErrands(const std::string& username) {
 // ===== View quotations =====
 void viewQuotation(const std::string& username) {
     int userId = getUserId(username);
-    if (userId == -1) { std::cout << "User not found!\n"; return; }
+    if (userId == -1) {
+        std::cout << "User not found!\n";
+        return;
+    }
 
     try {
         sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-        std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
+        std::unique_ptr<sql::Connection> con(
+            driver->connect("tcp://localhost:3306", "root", "")
+        );
         con->setSchema("erms");
 
         std::unique_ptr<sql::PreparedStatement> pstmt(
             con->prepareStatement(
                 "SELECT q.quote_id, q.errand_id, q.base_price_per_km, q.distance_km, "
-                "q.runner_percentage, q.system_percentage, q.runner_share, q.system_fee, q.status, q.transaction_id "
-                "FROM quotations q JOIN errands e ON q.errand_id = e.errand_id "
-                "WHERE e.requester_id=? ORDER BY q.quote_id DESC"
+                "q.runner_percentage, q.system_percentage, q.runner_share, q.system_fee, q.status "
+                "FROM quotations q "
+                "JOIN errands e ON q.errand_id = e.errand_id "
+                "WHERE e.requester_id=? AND q.status='Pending' "
+                "ORDER BY q.quote_id DESC"
             )
         );
         pstmt->setInt(1, userId);
+
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
 
-        std::cout << "\n=== Your Quotations ===\n";
-        bool hasQuote = false;
+        bool hasPending = false;
+        std::cout << "\n=== PENDING QUOTATIONS ===\n";
+
         while (res->next()) {
-            hasQuote = true;
+            hasPending = true;
             std::cout << "--------------------------------------------\n";
             std::cout << "Quotation ID   : " << res->getInt("quote_id") << "\n";
             std::cout << "Errand ID      : " << res->getInt("errand_id") << "\n";
-            std::cout << "Base Price/km  : RM " << std::fixed << std::setprecision(2) << res->getDouble("base_price_per_km") << "\n";
+            std::cout << "Base Price/km  : RM " << std::fixed << std::setprecision(2)
+                << res->getDouble("base_price_per_km") << "\n";
             std::cout << "Distance       : " << res->getDouble("distance_km") << " km\n";
             std::cout << "Runner %       : " << res->getDouble("runner_percentage") << "%\n";
             std::cout << "System %       : " << res->getDouble("system_percentage") << "%\n";
             std::cout << "Runner Fee     : RM " << res->getDouble("runner_share") << "\n";
             std::cout << "System Fee     : RM " << res->getDouble("system_fee") << "\n";
             std::cout << "Status         : " << res->getString("status") << "\n";
-            std::cout << "Transaction ID : " << (res->isNull("transaction_id") ? "N/A" : res->getString("transaction_id")) << "\n";
             std::cout << "--------------------------------------------\n\n";
         }
-        if (!hasQuote) std::cout << "No quotations found!\n";
+
+        if (!hasPending) {
+            std::cout << "All quotations have been paid.\n";
+            std::cout << "Returning to dashboard...\n";
+            return; // ⬅️ INI yang buat balik homescreen
+        }
+
     }
-    catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
+    catch (sql::SQLException& e) {
+        std::cerr << "Database error: " << e.what() << std::endl;
+    }
 }
+
 
 void makePayment(const std::string& username) {
     int userId = getUserId(username);
