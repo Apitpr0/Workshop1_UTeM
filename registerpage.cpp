@@ -8,7 +8,7 @@
 #include <mysql_connection.h>
 #include <cppconn/prepared_statement.h>
 #include <cppconn/resultset.h>
-#include "hash.h" // your SHA-256 hash function
+#include "hash.h" 
 
 using namespace std;
 
@@ -22,10 +22,11 @@ bool isValidEmail(const string& email) {
     return regex_match(email, pattern);
 }
 
-bool isValidName(const string& name) {
-    const regex pattern(R"(^[A-Za-z ]{2,50}$)");
-    return regex_match(name, pattern);
+bool isValidName(const std::string& u) {
+    const std::regex pattern(R"(^[A-Za-z0-9]{2,50}$)"); // 2-50 chars, letters & numbers
+    return regex_match(u, pattern);
 }
+
 
 bool isValidPassword(const string& pw) {
     if (pw.length() < 8) return false;
@@ -96,12 +97,13 @@ bool registerUser() {
     }
 
     // ===== Username =====
-    cout << "Enter username: ";
+    cout << "Enter username (2-50 chars, letters & numbers, no spaces): ";
     getline(cin, username);
     while (!isValidName(username)) {
-        cout << "Invalid name! Only letters and spaces allowed (2-50 chars). Re-enter: ";
+        cout << "Invalid username! Re-enter: ";
         getline(cin, username);
     }
+
 
     // ===== Password =====
     cout << "Enter password: ";

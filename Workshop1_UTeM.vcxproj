@@ -135,6 +135,7 @@
     <ClCompile Include="db\dbconnection.cpp" />
     <ClCompile Include="dashboard.cpp" />
     <ClCompile Include="loginpage.cpp" />
+    <ClCompile Include="pwdHash_algo.cpp" />
     <ClCompile Include="registerpage.cpp" />
     <ClCompile Include="runner_dashboard.cpp" />
     <ClCompile Include="user_dashboard.cpp" />

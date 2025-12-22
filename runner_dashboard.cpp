@@ -42,29 +42,58 @@ void viewAvailableErrands() {
         std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
         con->setSchema("erms");
 
+        // Ambik semua pending errands + join quotations (left join untuk fallback)
         std::unique_ptr<sql::PreparedStatement> pstmt(
             con->prepareStatement(
-                "SELECT errand_id, description, pickup_loc, dropoff_loc, distance "
-                "FROM errands WHERE status='Pending' ORDER BY created_at ASC"
+                "SELECT e.errand_id, e.description, e.pickup_loc, e.dropoff_loc, e.distance, "
+                "q.runner_share, q.base_price_per_km, q.runner_percentage "
+                "FROM errands e "
+                "LEFT JOIN quotations q ON e.errand_id = q.errand_id "
+                "WHERE e.status='Pending' "
+                "ORDER BY e.created_at ASC"
             )
         );
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
         std::cout << "\n--- Available Errands ---\n";
         bool hasErrands = false;
+
         while (res->next()) {
             hasErrands = true;
-            std::cout << "ID: " << res->getInt("errand_id")
-                << " | Desc: " << res->getString("description")
-                << " | Pickup: " << res->getString("pickup_loc")
-                << " | Dropoff: " << res->getString("dropoff_loc")
-                << " | Distance: " << std::fixed << std::setprecision(2)
-                << res->getDouble("distance") << " km\n";
+            int errandId = res->getInt("errand_id");
+            std::string desc = res->getString("description");
+            std::string pickup = res->getString("pickup_loc");
+            std::string dropoff = res->getString("dropoff_loc");
+            double distance = res->getDouble("distance");
+
+            double runnerShare = 0.0;
+
+            // Jika runner_share ada, pakai terus
+            if (!res->isNull("runner_share")) {
+                runnerShare = res->getDouble("runner_share");
+            }
+            else {
+                // Fallback kira manually kalau quotation tak ada
+                double basePricePerKm = !res->isNull("base_price_per_km") ? res->getDouble("base_price_per_km") : 3.0;
+                double runnerPercentage = !res->isNull("runner_percentage") ? res->getDouble("runner_percentage") : 70.0;
+                runnerShare = distance * basePricePerKm * (runnerPercentage / 100.0);
+            }
+
+            std::cout << "ID: " << errandId
+                << " | Desc: " << desc
+                << " | Pickup: " << pickup
+                << " | Dropoff: " << dropoff
+                << " | Distance: " << std::fixed << std::setprecision(2) << distance << " km"
+                << " | Runner Earn: RM " << std::fixed << std::setprecision(2) << runnerShare << "\n";
         }
+
         if (!hasErrands) std::cout << "No available errands at the moment.\n";
     }
-    catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
+    catch (sql::SQLException& e) {
+        std::cerr << "Database error: " << e.what() << std::endl;
+    }
 }
+
 
 // ===== View errands assigned to runner =====
 void viewAssignedErrands(const std::string& username) {
@@ -108,41 +137,99 @@ void acceptErrand(const std::string& username) {
     int runnerId = getRunnerId(username);
     if (runnerId == -1) { std::cout << "Runner not found!\n"; return; }
 
-    viewAvailableErrands();
-
-    int errandId;
-    while (true) {
-        std::cout << "Enter the ID of the errand to accept: ";
-        if (std::cin >> errandId) { std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); break; }
-        else { std::cin.clear(); std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); std::cout << "Invalid input!\n"; }
-    }
-
-    char confirm;
-    while (true) {
-        std::cout << "Confirm acceptance of this errand? (Y/N): ";
-        std::cin >> confirm; std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-        if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
-        else std::cout << "Invalid input! Enter Y or N.\n";
-    }
-    if (confirm == 'N' || confirm == 'n') { std::cout << "Operation canceled.\n"; return; }
-
     try {
         sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
         std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
         con->setSchema("erms");
 
+        // Tunjuk semua errands pending dengan runner_share
         std::unique_ptr<sql::PreparedStatement> pstmt(
+            con->prepareStatement(
+                "SELECT e.errand_id, e.description, e.pickup_loc, e.dropoff_loc, e.distance, "
+                "q.runner_share, q.base_price_per_km, q.runner_percentage "
+                "FROM errands e "
+                "LEFT JOIN quotations q ON e.errand_id = q.errand_id "
+                "WHERE e.status='Pending' "
+                "ORDER BY e.created_at ASC"
+            )
+        );
+
+        std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+        std::cout << "\n--- Available Errands ---\n";
+        bool hasErrands = false;
+
+        // Simpan errand info dalam map untuk lookup nanti
+        std::map<int, double> errandRunnerShare;
+
+        while (res->next()) {
+            hasErrands = true;
+            int errandId = res->getInt("errand_id");
+            std::string desc = res->getString("description");
+            std::string pickup = res->getString("pickup_loc");
+            std::string dropoff = res->getString("dropoff_loc");
+            double distance = res->getDouble("distance");
+
+            double runnerShare = 0.0;
+
+            if (!res->isNull("runner_share")) {
+                runnerShare = res->getDouble("runner_share");
+            }
+            else {
+                double basePricePerKm = !res->isNull("base_price_per_km") ? res->getDouble("base_price_per_km") : 3.0;
+                double runnerPercentage = !res->isNull("runner_percentage") ? res->getDouble("runner_percentage") : 70.0;
+                runnerShare = distance * basePricePerKm * (runnerPercentage / 100.0);
+            }
+
+            errandRunnerShare[errandId] = runnerShare;
+
+            std::cout << "ID: " << errandId
+                << " | Desc: " << desc
+                << " | Pickup: " << pickup
+                << " | Dropoff: " << dropoff
+                << " | Distance: " << std::fixed << std::setprecision(2) << distance << " km"
+                << " | Runner Earn: RM " << std::fixed << std::setprecision(2) << runnerShare << "\n";
+        }
+
+        if (!hasErrands) { std::cout << "No available errands at the moment.\n"; return; }
+
+        int errandId;
+        while (true) {
+            std::cout << "Enter the ID of the errand to accept: ";
+            if (std::cin >> errandId && errandRunnerShare.find(errandId) != errandRunnerShare.end()) {
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                break;
+            }
+            else {
+                std::cin.clear(); std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                std::cout << "Invalid input! ID not found.\n";
+            }
+        }
+
+        std::cout << "You will earn RM " << std::fixed << std::setprecision(2) << errandRunnerShare[errandId] << " for this errand.\n";
+
+        char confirm;
+        while (true) {
+            std::cout << "Confirm acceptance of this errand? (Y/N): ";
+            std::cin >> confirm; std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
+            else std::cout << "Invalid input! Enter Y or N.\n";
+        }
+        if (confirm == 'N' || confirm == 'n') { std::cout << "Operation canceled.\n"; return; }
+
+        // Update errand status
+        std::unique_ptr<sql::PreparedStatement> updateStmt(
             con->prepareStatement(
                 "UPDATE errands SET status='Assigned', runner_id=? "
                 "WHERE errand_id=? AND status='Pending'"
             )
         );
-        pstmt->setInt(1, runnerId);
-        pstmt->setInt(2, errandId);
+        updateStmt->setInt(1, runnerId);
+        updateStmt->setInt(2, errandId);
 
-        int updated = pstmt->executeUpdate();
+        int updated = updateStmt->executeUpdate();
         if (updated > 0) std::cout << "Errand accepted successfully!\n";
         else std::cout << "Errand not found or already assigned.\n";
+
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
