@@ -55,7 +55,6 @@ static std::tuple<int, std::string> loginWithRole(int expectedRole, const std::s
                     std::cout << "Login failed! This account does not have " << roleName << " access.\n";
                     return { -1, "" };
                 }
-                std::cout << "Login successful! Welcome " << roleName << ", " << username << ".\n";
                 return { role, username };
             }
             else {

@@ -40,6 +40,8 @@ void show_dashboard() {
             int role = std::get<0>(loginResult);
             std::string username = std::get<1>(loginResult);
             if (role == 0) {
+
+                std::cout << "[User] Login successful! Welcome " << username << ".\n";
                 user_menu(username);
             }
             else {
@@ -53,7 +55,8 @@ void show_dashboard() {
             int role = std::get<0>(loginResult);
             std::string username = std::get<1>(loginResult);
             if (role == 1) {
-                admin_menu(username); // Pass the username for personalized welcome
+                std::cout << "[Admin] Login successful! Welcome " << username << ".\n";
+                admin_menu(username); 
             }
             else {
                 std::cout << "Login failed or wrong role.\n";
