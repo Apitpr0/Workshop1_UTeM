@@ -297,6 +297,73 @@ void markErrandCompleted(const std::string& username) {
 // ===== Runner summary stats =====
 void viewRunnerStats(const std::string& username) {
     int runnerId = getRunnerId(username);
+    if (runnerId == -1) {
+        std::cout << "Runner not found!\n";
+        return;
+    }
+
+    try {
+        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
+        con->setSchema("erms");
+
+        // Ambik semua errands untuk runner ni
+        std::unique_ptr<sql::PreparedStatement> pstmt(
+            con->prepareStatement(
+                "SELECT e.status, e.distance, q.runner_share, q.base_price_per_km, q.runner_percentage "
+                "FROM errands e "
+                "LEFT JOIN quotations q ON e.errand_id = q.errand_id "
+                "WHERE e.runner_id=?"
+            )
+        );
+        pstmt->setInt(1, runnerId);
+
+        std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+
+        int total = 0, pending = 0, assigned = 0, completed = 0;
+        double totalEarned = 0.0;
+
+        while (res->next()) {
+            total++;
+            std::string status = res->getString("status");
+
+            double distance = res->getDouble("distance");
+            double runnerShare = 0.0;
+
+            // Ambik runner_share dari quotations jika ada
+            if (!res->isNull("runner_share")) {
+                runnerShare = res->getDouble("runner_share");
+            }
+            else {
+                double basePricePerKm = !res->isNull("base_price_per_km") ? res->getDouble("base_price_per_km") : 3.0;
+                double runnerPercentage = !res->isNull("runner_percentage") ? res->getDouble("runner_percentage") : 70.0;
+                runnerShare = distance * basePricePerKm * (runnerPercentage / 100.0);
+            }
+
+            if (status == "Pending") pending++;
+            else if (status == "Assigned") assigned++;
+            else if (status == "Completed") {
+                completed++;
+                totalEarned += runnerShare;
+            }
+        }
+
+        std::cout << "\n--- Runner Summary ---\n";
+        std::cout << "Total errands: " << total
+            << " | Pending: " << pending
+            << " | Assigned: " << assigned
+            << " | Completed: " << completed << "\n";
+        std::cout << "Total earned (RM): " << std::fixed << std::setprecision(2) << totalEarned << "\n";
+
+    }
+    catch (sql::SQLException& e) {
+        std::cerr << "Database error: " << e.what() << std::endl;
+    }
+}
+
+// ===== Claim earned errands =====
+void claimErrandEarnings(const std::string& username) {
+    int runnerId = getRunnerId(username);
     if (runnerId == -1) { std::cout << "Runner not found!\n"; return; }
 
     try {
@@ -306,24 +373,41 @@ void viewRunnerStats(const std::string& username) {
 
         std::unique_ptr<sql::PreparedStatement> pstmt(
             con->prepareStatement(
-                "SELECT COUNT(*) AS total, "
-                "SUM(status='Pending') AS pending, "
-                "SUM(status='Assigned') AS assigned, "
-                "SUM(status='Completed') AS completed "
-                "FROM errands WHERE runner_id=?"
+                "SELECT e.errand_id, e.description, "
+                "COALESCE(q.runner_share, e.distance * 3 * 0.7) AS runner_share "
+                "FROM errands e "
+                "LEFT JOIN quotations q ON e.errand_id = q.errand_id "
+                "WHERE e.runner_id=? AND e.status='Completed' AND (e.runner_earned=FALSE OR e.runner_earned IS NULL)"
             )
         );
         pstmt->setInt(1, runnerId);
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
-        if (res->next()) {
-            std::cout << "\n--- Runner Summary ---\n";
-            std::cout << "Total: " << res->getInt("total")
-                << " | Pending: " << res->getInt("pending")
-                << " | Assigned: " << res->getInt("assigned")
-                << " | Completed: " << res->getInt("completed") << "\n";
+        bool hasEarnings = false;
+        double totalEarned = 0;
+
+        while (res->next()) {
+            hasEarnings = true;
+            int errandId = res->getInt("errand_id");
+            std::string desc = res->getString("description");
+            double runnerShare = res->getDouble("runner_share");
+
+            std::cout << "Errand ID: " << errandId
+                << " | Desc: " << desc
+                << " | Earn: RM " << std::fixed << std::setprecision(2) << runnerShare << "\n";
+
+            totalEarned += runnerShare;
+
+            // Mark as earned
+            std::unique_ptr<sql::PreparedStatement> updateStmt(
+                con->prepareStatement("UPDATE errands SET runner_earned=TRUE WHERE errand_id=?")
+            );
+            updateStmt->setInt(1, errandId);
+            updateStmt->executeUpdate();
         }
 
+        if (!hasEarnings) std::cout << "No earnings to claim yet.\n";
+        else std::cout << "Total earned this session: RM " << std::fixed << std::setprecision(2) << totalEarned << "\n";
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
@@ -334,11 +418,12 @@ void runner_menu(const std::string& username) {
         std::cout << "\n=== Runner Dashboard ===\n";
         std::cout << "1. View available errands\n";
         std::cout << "2. Accept an errand\n";
-        std::cout << "3. View my assigned errands\n"; 
+        std::cout << "3. View my assigned errands\n";
         std::cout << "4. Mark an errand as completed\n";
         std::cout << "5. View summary stats\n";
+        std::cout << "6. Claim earned errands\n";
         std::cout << "0. Logout\nEnter choice: ";
-        int choice = getMenuChoice(0, 5);
+        int choice = getMenuChoice(0, 6);
 
         switch (choice) {
         case 0: return;
@@ -347,7 +432,9 @@ void runner_menu(const std::string& username) {
         case 3: viewAssignedErrands(username); break;
         case 4: markErrandCompleted(username); break;
         case 5: viewRunnerStats(username); break;
+        case 6: claimErrandEarnings(username); break;
         default: std::cout << "Invalid choice.\n";
         }
     }
 }
+
