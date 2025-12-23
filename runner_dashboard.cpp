@@ -333,8 +333,8 @@ void runner_menu(const std::string& username) {
     while (true) {
         std::cout << "\n=== Runner Dashboard ===\n";
         std::cout << "1. View available errands\n";
-        std::cout << "2. View my assigned errands\n";   // NEW
-        std::cout << "3. Accept an errand\n";
+        std::cout << "2. Accept an errand\n";
+        std::cout << "3. View my assigned errands\n"; 
         std::cout << "4. Mark an errand as completed\n";
         std::cout << "5. View summary stats\n";
         std::cout << "0. Logout\nEnter choice: ";
@@ -343,8 +343,8 @@ void runner_menu(const std::string& username) {
         switch (choice) {
         case 0: return;
         case 1: viewAvailableErrands(); break;
-        case 2: viewAssignedErrands(username); break; // NEW
-        case 3: acceptErrand(username); break;
+        case 2: acceptErrand(username); break;
+        case 3: viewAssignedErrands(username); break;
         case 4: markErrandCompleted(username); break;
         case 5: viewRunnerStats(username); break;
         default: std::cout << "Invalid choice.\n";

@@ -4,6 +4,7 @@
 #include <limits>
 #include <regex>
 #include <memory>
+#include <vector>
 #include <mysql_driver.h>
 #include <mysql_connection.h>
 #include <cppconn/prepared_statement.h>
@@ -97,44 +98,78 @@ bool registerUser() {
     }
 
     // ===== Username =====
-    cout << "Enter username (2-50 chars, letters & numbers, no spaces): ";
-    getline(cin, username);
-    while (!isValidName(username)) {
-        cout << "Invalid username! Re-enter: ";
-        getline(cin, username);
-    }
-
-
-    // ===== Password =====
-    cout << "Enter password: ";
-    getline(cin, password);
-    while (!isValidPassword(password)) {
-        cout << "Password must be 8+ chars, include uppercase, lowercase, number, and symbol. Re-enter: ";
-        getline(cin, password);
-    }
-
-    string confirmPassword;
-    cout << "Confirm password: ";
-    getline(cin, confirmPassword);
-    while (confirmPassword != password) {
-        cout << "Passwords do not match! Re-enter confirmation: ";
-        getline(cin, confirmPassword);
-    }
-
-    // ===== Email =====
-    cout << "Enter email: ";
-    getline(cin, email);
-    while (!isValidEmail(email)) {
-        cout << "Invalid email format. Re-enter: ";
-        getline(cin, email);
-    }
-
-    // ===== Contact Number =====
     try {
         sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
         unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
         con->setSchema("erms");
 
+        while (true) {
+            cout << "Enter username (2-50 chars, letters & numbers, no spaces): ";
+            getline(cin, username);
+
+            if (!isValidName(username)) {
+                cout << "Invalid username! Re-enter.\n";
+                continue;
+            }
+
+            // Check duplicate username
+            unique_ptr<sql::PreparedStatement> checkUserStmt(
+                con->prepareStatement("SELECT COUNT(*) AS count FROM users WHERE name=?")
+            );
+            checkUserStmt->setString(1, username);
+            unique_ptr<sql::ResultSet> resUser(checkUserStmt->executeQuery());
+            resUser->next();
+            if (resUser->getInt("count") > 0) {
+                cout << "Username already taken! Please enter another.\n";
+                continue;
+            }
+
+            break; // valid & unique
+        }
+
+        // ===== Password =====
+        cout << "Enter password (8+ chars, uppercase, lowercase, number and symbol): ";
+        getline(cin, password);
+        while (!isValidPassword(password)) {
+            cout << "Password must be 8+ chars, include uppercase, lowercase, number, and symbol. Re-enter: ";
+            getline(cin, password);
+        }
+
+        string confirmPassword;
+        cout << "Confirm password: ";
+        getline(cin, confirmPassword);
+        while (confirmPassword != password) {
+            cout << "Passwords do not match! Re-enter confirmation: ";
+            getline(cin, confirmPassword);
+        }
+
+        // ===== Email =====
+        while (true) {
+            cout << "Enter email: ";
+            getline(cin, email);
+
+            if (!isValidEmail(email)) {
+                cout << "Invalid email format. Re-enter.\n";
+                continue;
+            }
+
+            // Check duplicate email
+            unique_ptr<sql::PreparedStatement> checkEmailStmt(
+                con->prepareStatement("SELECT COUNT(*) AS count FROM users WHERE email=?")
+            );
+            checkEmailStmt->setString(1, email);
+            unique_ptr<sql::ResultSet> resEmail(checkEmailStmt->executeQuery());
+            resEmail->next();
+            if (resEmail->getInt("count") > 0) {
+                cout << "Email already registered! Enter another email.\n";
+                continue;
+            }
+
+            break; // Valid & unique email
+        }
+
+
+        // ===== Contact Number =====
         while (true) {
             cout << "Enter contact number (with optional +countrycode): ";
             getline(cin, contactNumber);
@@ -164,18 +199,6 @@ bool registerUser() {
         }
 
         string hashedPassword = hashPassword(password);
-
-        // Check duplicate email
-        unique_ptr<sql::PreparedStatement> checkEmailStmt(
-            con->prepareStatement("SELECT COUNT(*) AS count FROM users WHERE email=?")
-        );
-        checkEmailStmt->setString(1, email);
-        unique_ptr<sql::ResultSet> resEmail(checkEmailStmt->executeQuery());
-        resEmail->next();
-        if (resEmail->getInt("count") > 0) {
-            cout << "Email already registered! Registration aborted.\n";
-            return false;
-        }
 
         // Insert user
         unique_ptr<sql::PreparedStatement> pstmt(

@@ -183,15 +183,13 @@ void assignErrandToRunner() {
         int updated = pstmt->executeUpdate();
         if (updated > 0) std::cout << "Errand assigned to runner successfully!\n";
         else std::cout << "Errand or runner not found!\n";
-
+        viewAllErrands();
         delete pstmt;
         delete con;
     }
     catch (sql::SQLException& e) {
         std::cerr << "Database error: " << e.what() << "\n";
     }
-
-    viewAllErrands();
 }
 
 // ===== Register runner manually =====
