@@ -42,6 +42,17 @@ void forgetPassword() {
     sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
     sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
     con->setSchema("erms");
+    
+    // Beautiful database connection success message
+    std::cout << "\n";
+    centerText("========================================");
+    centerText("   [OK] SUCCESSFULLY CONNECTED! [OK]");
+    centerText("========================================");
+    centerText("   Database Server: localhost:3306");
+    centerText("   Database Schema: erms");
+    centerText("   Status: Connected");
+    centerText("========================================");
+    std::cout << "\n";
 
     // Check if username exists
     sql::PreparedStatement* checkStmt = con->prepareStatement(
@@ -146,16 +157,21 @@ void forgetPassword() {
 void show_dashboard() {
     while (true) {
         clearScreen();
-        printMenuTitle("ERMS - ERrand Management System");
-        centerText("Welcome to ERMS!");
+        
+        // Beautiful header with ASCII art style
         std::cout << "\n";
+        printMenuTitle("ERMS - Errand Runner Management System, Your trusted Partner");
         printHeader("MAIN MENU");
-        centerText("1. User Login");
-        centerText("2. Admin Login");
-        centerText("3. Runner Login");
-        centerText("4. Register");
-        centerText("5. Forget Password");
-        centerText("0. Exit");
+        std::cout << "\n";
+        centerText("+--------------------------------------+");
+        centerText("|  1. User Login                      |");
+        centerText("|  2. Admin Login                     |");
+        centerText("|  3. Runner Login                    |");
+        centerText("|  4. Register                        |");
+        centerText("|  5. Forget Password                 |");
+        centerText("|  0. Exit                            |");
+        centerText("+--------------------------------------+");
+        std::cout << "\n";
         printHeader("");
         std::cout << "\n";
         centerText("Enter choice: ");
