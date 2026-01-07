@@ -2,161 +2,248 @@
 #include <string>
 #include <iomanip>
 #include <limits>
+#include <regex>
+#include <vector>
 #include <cppconn/driver.h>
 #include <cppconn/connection.h>
 #include <cppconn/prepared_statement.h>
 #include <cppconn/resultset.h>
 #include <mysql_driver.h>
 #include "hash.h" // untuk hashPassword
+#include "utils.h" // untuk validation functions
 
 const std::string RUNNER_ENROLLMENT_PASSWORD = "runner123";
 
-// Forward declaration
-int getMenuChoice(int min, int max);
-
-// Helper untuk truncate string panjang
-std::string truncateString(const std::string& str, size_t width) {
-    if (str.length() <= width) return str;
-    if (width <= 3) return str.substr(0, width);
-    return str.substr(0, width - 3) + "...";
+// Helper untuk display star chart dengan kurungan (1 star = RM50)
+void displayStarChart(const std::string& label, double amount) {
+    int stars = static_cast<int>(amount / 50.0 + 0.5); // Round to nearest integer
+    std::string starString(stars, '*');
+    std::ostringstream amountStream;
+    amountStream << std::fixed << std::setprecision(2) << amount;
+    centerText(label + " : RM " + amountStream.str() + " (" + starString + ")");
 }
 
 // ===== View all users =====
 void viewAllUsers() {
-    try {
-        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-        sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
-        con->setSchema("erms");
+    clearScreen();
+    printMenuTitle("All Users");
+    
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
 
-        sql::PreparedStatement* pstmt = con->prepareStatement(
-            "SELECT user_id, name, email, c_number, role FROM users"
-        );
-        sql::ResultSet* res = pstmt->executeQuery();
+    sql::PreparedStatement* pstmt = con->prepareStatement(
+        "SELECT user_id, name, email, c_number, role FROM users"
+    );
+    sql::ResultSet* res = pstmt->executeQuery();
 
-        std::cout << "\n--- All Users ---\n";
-        std::cout << std::left
-            << std::setw(5) << "ID"
-            << std::setw(20) << "Name"
-            << std::setw(25) << "Email"
-            << std::setw(15) << "Contact"
-            << std::setw(10) << "Role" << "\n";
-        std::cout << std::string(75, '-') << "\n";
+    std::vector<std::pair<std::string, int>> columns = {
+        {"ID", 5},
+        {"Name", 20},
+        {"Email", 25},
+        {"Contact", 15},
+        {"Role", 10}
+    };
+    std::vector<int> widths = {5, 20, 25, 15, 10};
+    
+    printTableHeader(columns);
 
-        while (res->next()) {
-            int role = res->getInt("role");
-            std::string roleText = (role == 0) ? "User" : (role == 1) ? "Admin" : "Runner";
+    bool hasData = false;
+    while (res->next()) {
+        hasData = true;
+        int role = res->getInt("role");
+        std::string roleText = (role == 0) ? "User" : (role == 1) ? "Admin" : "Runner";
 
-            std::cout << std::left
-                << std::setw(5) << res->getInt("user_id")
-                << std::setw(20) << truncateString(res->getString("name"), 20)
-                << std::setw(25) << truncateString(res->getString("email"), 25)
-                << std::setw(15) << truncateString(res->getString("c_number"), 15)
-                << std::setw(10) << truncateString(roleText, 10)
-                << "\n";
-        }
-
-        delete res;
-        delete pstmt;
-        delete con;
+        std::vector<std::string> row = {
+            std::to_string(res->getInt("user_id")),
+            truncateString(res->getString("name"), 20),
+            truncateString(res->getString("email"), 25),
+            truncateString(res->getString("c_number"), 15),
+            truncateString(roleText, 10)
+        };
+        printTableRow(row, widths);
     }
-    catch (sql::SQLException& e) {
-        std::cerr << "Database error: " << e.what() << "\n";
+
+    if (!hasData) {
+        centerText("No users found.");
     }
+
+    printTableFooter(widths);
+    std::cout << "\nPress Enter to continue...";
+    std::cin.get();
+
+    delete res;
+    delete pstmt;
+    delete con;
+}
+
+// ===== View all runners =====
+void viewAllRunners() {
+    clearScreen();
+    printMenuTitle("All Runners");
+    
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+
+    sql::PreparedStatement* pstmt = con->prepareStatement(
+        "SELECT user_id, name, email, c_number FROM users WHERE role = 2"
+    );
+    sql::ResultSet* res = pstmt->executeQuery();
+
+    std::vector<std::pair<std::string, int>> columns = {
+        {"ID", 5},
+        {"Name", 20},
+        {"Email", 25},
+        {"Contact", 15}
+    };
+    std::vector<int> widths = {5, 20, 25, 15};
+    
+    printTableHeader(columns);
+
+    bool hasData = false;
+    while (res->next()) {
+        hasData = true;
+        std::vector<std::string> row = {
+            std::to_string(res->getInt("user_id")),
+            truncateString(res->getString("name"), 20),
+            truncateString(res->getString("email"), 25),
+            truncateString(res->getString("c_number"), 15)
+        };
+        printTableRow(row, widths);
+    }
+
+    if (!hasData) {
+        centerText("No runners found.");
+    }
+
+    printTableFooter(widths);
+    std::cout << "\nPress Enter to continue...";
+    std::cin.get();
+
+    delete res;
+    delete pstmt;
+    delete con;
 }
 
 // ===== View all errands =====
 void viewAllErrands() {
-    try {
-        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-        sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
-        con->setSchema("erms");
+    clearScreen();
+    printMenuTitle("All Errands");
+    
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
 
-        sql::PreparedStatement* pstmt = con->prepareStatement(
-            "SELECT e.errand_id, u.name AS requester, e.description, e.pickup_loc, "
-            "e.dropoff_loc, e.distance, e.status, e.created_at, r.name AS runner "
-            "FROM errands e "
-            "LEFT JOIN users u ON e.requester_id = u.user_id "
-            "LEFT JOIN users r ON e.runner_id = r.user_id "
-            "ORDER BY e.created_at DESC"
-        );
-        sql::ResultSet* res = pstmt->executeQuery();
+    sql::PreparedStatement* pstmt = con->prepareStatement(
+        "SELECT e.errand_id, u.name AS requester, e.description, e.pickup_loc, "
+        "e.dropoff_loc, e.distance, e.status, e.created_at, r.name AS runner "
+        "FROM errands e "
+        "LEFT JOIN users u ON e.requester_id = u.user_id "
+        "LEFT JOIN users r ON e.runner_id = r.user_id "
+        "ORDER BY e.created_at DESC"
+    );
+    sql::ResultSet* res = pstmt->executeQuery();
 
-        std::cout << "\n--- All Errands ---\n";
-        std::cout << std::left
-            << std::setw(5) << "ID"
-            << std::setw(15) << "Requester"
-            << std::setw(15) << "Runner"
-            << std::setw(25) << "Description"
-            << std::setw(15) << "Pickup"
-            << std::setw(15) << "Dropoff"
-            << std::setw(10) << "Distance"
-            << std::setw(12) << "Status"
-            << std::setw(20) << "Created At" << "\n";
-        std::cout << std::string(130, '-') << "\n";
+    std::vector<std::pair<std::string, int>> columns = {
+        {"ID", 5},
+        {"Requester", 15},
+        {"Runner", 15},
+        {"Description", 25},
+        {"Pickup", 15},
+        {"Dropoff", 15},
+        {"Distance", 10},
+        {"Status", 12},
+        {"Created At", 20}
+    };
+    std::vector<int> widths = {5, 15, 15, 25, 15, 15, 10, 12, 20};
+    
+    printTableHeader(columns);
 
-        while (res->next()) {
-            std::string runnerName = res->isNull("runner") ? "Unassigned" : res->getString("runner");
+    bool hasData = false;
+    while (res->next()) {
+        hasData = true;
+        std::string runnerName = res->isNull("runner") ? "Unassigned" : res->getString("runner");
+        std::ostringstream distStream;
+        distStream << std::fixed << std::setprecision(2) << res->getDouble("distance");
 
-            std::cout << std::left
-                << std::setw(5) << res->getInt("errand_id")
-                << std::setw(15) << truncateString(res->getString("requester"), 15)
-                << std::setw(15) << truncateString(runnerName, 15)
-                << std::setw(25) << truncateString(res->getString("description"), 25)
-                << std::setw(15) << truncateString(res->getString("pickup_loc"), 15)
-                << std::setw(15) << truncateString(res->getString("dropoff_loc"), 15)
-                << std::setw(10) << res->getDouble("distance")
-                << std::setw(12) << truncateString(res->getString("status"), 12)
-                << std::setw(20) << truncateString(res->getString("created_at"), 20)
-                << "\n";
-        }
-
-        delete res;
-        delete pstmt;
-        delete con;
+        std::vector<std::string> row = {
+            std::to_string(res->getInt("errand_id")),
+            truncateString(res->getString("requester"), 15),
+            truncateString(runnerName, 15),
+            truncateString(res->getString("description"), 25),
+            truncateString(res->getString("pickup_loc"), 15),
+            truncateString(res->getString("dropoff_loc"), 15),
+            distStream.str(),
+            truncateString(res->getString("status"), 12),
+            truncateString(res->getString("created_at"), 20)
+        };
+        printTableRow(row, widths);
     }
-    catch (sql::SQLException& e) {
-        std::cerr << "Database error: " << e.what() << "\n";
+
+    if (!hasData) {
+        centerText("No errands found.");
     }
+
+    printTableFooter(widths);
+    std::cout << "\nPress Enter to continue...";
+    std::cin.get();
+
+    delete res;
+    delete pstmt;
+    delete con;
 }
 
 // ===== Update errand status =====
 void updateErrandStatusAdmin() {
     viewAllErrands();
     int errandId;
-    std::cout << "Enter the ID of the errand to update: ";
-    std::cin >> errandId;
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    
+    while (true) {
+        errandId = getCenteredIntInput("Enter the ID of the errand to update (or 0 to go back): ");
+        if (errandId == 0) return; // Back to menu
+        if (errandId > 0) break;
+        else centerText("Invalid input! Please enter a valid errand ID or 0 to go back.");
+    }
 
     std::string newStatus;
-    std::cout << "Enter new status (Pending, Assigned, Completed): ";
-    std::getline(std::cin, newStatus);
+    while (true) {
+        newStatus = getCenteredInput("Enter new status (Pending, Assigned, Completed, or 'back' to cancel): ");
 
-    if (newStatus != "Pending" && newStatus != "Assigned" && newStatus != "Completed") {
-        std::cout << "Invalid status!\n";
-        return;
+        if (newStatus == "back" || newStatus == "Back" || newStatus == "BACK") {
+            centerText("Status update cancelled.");
+            return;
+        }
+        if (newStatus == "Pending" || newStatus == "Assigned" || newStatus == "Completed") {
+            break;
+        }
+        else {
+            centerText("Invalid status! Please enter: Pending, Assigned, Completed, or 'back' to cancel.");
+        }
     }
 
-    try {
-        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-        sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
-        con->setSchema("erms");
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
 
-        sql::PreparedStatement* pstmt = con->prepareStatement(
-            "UPDATE errands SET status=? WHERE errand_id=?"
-        );
-        pstmt->setString(1, newStatus);
-        pstmt->setInt(2, errandId);
-        int updated = pstmt->executeUpdate();
-        if (updated > 0) std::cout << "Errand status updated successfully!\n";
-        else std::cout << "Errand not found!\n";
-
-        delete pstmt;
-        delete con;
+    sql::PreparedStatement* pstmt = con->prepareStatement(
+        "UPDATE errands SET status=? WHERE errand_id=?"
+    );
+    pstmt->setString(1, newStatus);
+    pstmt->setInt(2, errandId);
+    int updated = pstmt->executeUpdate();
+    if (updated > 0) {
+        printSuccess("Errand status updated successfully!");
     }
-    catch (sql::SQLException& e) {
-        std::cerr << "Database error: " << e.what() << "\n";
+    else {
+        printError("Errand not found!");
     }
 
+    delete pstmt;
+    delete con;
+    
+    std::cout << "\nPress Enter to continue...";
+    std::cin.get();
     viewAllErrands();
 }
 
@@ -164,61 +251,187 @@ void updateErrandStatusAdmin() {
 void assignErrandToRunner() {
     viewAllErrands();
     int errandId, runnerId;
-    std::cout << "Enter the ID of the errand to assign: ";
-    std::cin >> errandId;
-    std::cout << "Enter the runner's user ID: ";
-    std::cin >> runnerId;
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-
-    try {
-        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-        sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
-        con->setSchema("erms");
-
-        sql::PreparedStatement* pstmt = con->prepareStatement(
-            "UPDATE errands SET runner_id=?, status='Assigned' WHERE errand_id=?"
-        );
-        pstmt->setInt(1, runnerId);
-        pstmt->setInt(2, errandId);
-        int updated = pstmt->executeUpdate();
-        if (updated > 0) std::cout << "Errand assigned to runner successfully!\n";
-        else std::cout << "Errand or runner not found!\n";
-        viewAllErrands();
-        delete pstmt;
-        delete con;
+    
+    while (true) {
+        errandId = getCenteredIntInput("Enter the ID of the errand to assign (or 0 to go back): ");
+        if (errandId == 0) return; // Back to menu
+        if (errandId > 0) break;
+        else centerText("Invalid input! Please enter a valid errand ID or 0 to go back.");
     }
-    catch (sql::SQLException& e) {
-        std::cerr << "Database error: " << e.what() << "\n";
+    
+    while (true) {
+        runnerId = getCenteredIntInput("Enter the runner's user ID (or 0 to go back): ");
+        if (runnerId == 0) return; // Back to menu
+        if (runnerId > 0) break;
+        else centerText("Invalid input! Please enter a valid runner ID or 0 to go back.");
     }
+
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+
+    sql::PreparedStatement* pstmt = con->prepareStatement(
+        "UPDATE errands SET runner_id=?, status='Assigned' WHERE errand_id=?"
+    );
+    pstmt->setInt(1, runnerId);
+    pstmt->setInt(2, errandId);
+    int updated = pstmt->executeUpdate();
+    if (updated > 0) {
+        printSuccess("Errand assigned to runner successfully!");
+    }
+    else {
+        printError("Errand or runner not found!");
+    }
+    
+    std::cout << "\nPress Enter to continue...";
+    std::cin.get();
+    viewAllErrands();
+    delete pstmt;
+    delete con;
 }
 
 // ===== Register runner manually =====
 void registerRunner() {
     std::string enrollmentPassword;
-    std::cout << "Enter runner enrollment password: ";
-    std::getline(std::cin, enrollmentPassword);
+    enrollmentPassword = getCenteredInput("Enter runner enrollment password (or type 'back' to cancel): ");
+    if (enrollmentPassword == "back" || enrollmentPassword == "Back" || enrollmentPassword == "BACK") {
+        centerText("Registration cancelled.");
+        return;
+    }
     if (enrollmentPassword != RUNNER_ENROLLMENT_PASSWORD) {
-        std::cout << "Invalid enrollment password. Registration aborted.\n";
+        centerText("Invalid enrollment password. Registration aborted.");
         return;
     }
 
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+
     std::string username, password, email, contactNumber;
-    std::cout << "Enter username: ";
-    std::getline(std::cin, username);
-    std::cout << "Enter password: ";
-    std::getline(std::cin, password);
-    std::cout << "Enter email: ";
-    std::getline(std::cin, email);
-    std::cout << "Enter contact number: ";
-    std::getline(std::cin, contactNumber);
 
-    std::string hashedPassword = hashPassword(password);
+        // ===== Username =====
+        while (true) {
+            username = getCenteredInput("Enter username (2-50 chars, letters & numbers, no spaces) or 'back' to cancel: ");
 
-    try {
-        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-        sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
-        con->setSchema("erms");
+            if (username == "back" || username == "Back" || username == "BACK") {
+                centerText("Registration cancelled.");
+                delete con;
+                return;
+            }
 
+            if (!isValidName(username)) {
+                centerText("Invalid username! Re-enter.");
+                continue;
+            }
+
+            // Check duplicate username
+            sql::PreparedStatement* checkUserStmt = con->prepareStatement(
+                "SELECT COUNT(*) AS count FROM users WHERE name=?"
+            );
+            checkUserStmt->setString(1, username);
+            sql::ResultSet* resUser = checkUserStmt->executeQuery();
+            resUser->next();
+            if (resUser->getInt("count") > 0) {
+                centerText("Username already taken! Please enter another.");
+                delete resUser;
+                delete checkUserStmt;
+                continue;
+            }
+
+            delete resUser;
+            delete checkUserStmt;
+            break; // valid & unique
+        }
+
+        // ===== Password =====
+        password = getCenteredInput("Enter password (8+ chars, uppercase, lowercase, number and symbol): ");
+        while (!isValidPassword(password)) {
+            centerText("Password must be 8+ chars, include uppercase, lowercase, number, and symbol. Re-enter.");
+            password = getCenteredInput("Enter password: ");
+        }
+
+        std::string confirmPassword;
+        confirmPassword = getCenteredInput("Confirm password: ");
+        while (confirmPassword != password) {
+            centerText("Passwords do not match! Re-enter confirmation.");
+            confirmPassword = getCenteredInput("Confirm password: ");
+        }
+
+        // ===== Email =====
+        while (true) {
+            email = getCenteredInput("Enter email (or 'back' to cancel): ");
+
+            if (email == "back" || email == "Back" || email == "BACK") {
+                centerText("Registration cancelled.");
+                delete con;
+                return;
+            }
+
+            if (!isValidEmail(email)) {
+                centerText("Invalid email format. Re-enter.");
+                continue;
+            }
+
+            // Check duplicate email
+            sql::PreparedStatement* checkEmailStmt = con->prepareStatement(
+                "SELECT COUNT(*) AS count FROM users WHERE email=?"
+            );
+            checkEmailStmt->setString(1, email);
+            sql::ResultSet* resEmail = checkEmailStmt->executeQuery();
+            resEmail->next();
+            if (resEmail->getInt("count") > 0) {
+                centerText("Email already registered! Enter another email.");
+                delete resEmail;
+                delete checkEmailStmt;
+                continue;
+            }
+
+            delete resEmail;
+            delete checkEmailStmt;
+            break; // Valid & unique email
+        }
+
+        // ===== Contact Number =====
+        while (true) {
+            contactNumber = getCenteredInput("Enter contact number (with optional +countrycode, or 'back' to cancel): ");
+            
+            if (contactNumber == "back" || contactNumber == "Back" || contactNumber == "BACK") {
+                centerText("Registration cancelled.");
+                delete con;
+                return;
+            }
+            
+            if (!isValidPhoneIntl(contactNumber)) {
+                centerText("Invalid phone! Must be 7-15 digits, can start with +. Re-enter.");
+                continue;
+            }
+
+            // Check duplicate
+            sql::PreparedStatement* checkStmt = con->prepareStatement(
+                "SELECT c_number FROM users"
+            );
+            sql::ResultSet* res = checkStmt->executeQuery();
+            bool duplicate = false;
+            std::string normalizedInput = normalizePhone(contactNumber);
+            while (res->next()) {
+                std::string existing = normalizePhone(res->getString("c_number"));
+                if (normalizedInput == existing) { duplicate = true; break; }
+            }
+
+            delete res;
+            delete checkStmt;
+
+            if (duplicate) {
+                centerText("This contact number is already registered! Enter another number.");
+                continue;
+            }
+
+            break; // Valid & unique
+        }
+
+        std::string hashedPassword = hashPassword(password);
+
+        // Insert user
         sql::PreparedStatement* pstmt = con->prepareStatement(
             "INSERT INTO users(name, password, email, c_number, role) VALUES (?, ?, ?, ?, 2)"
         );
@@ -228,139 +441,1128 @@ void registerRunner() {
         pstmt->setString(4, contactNumber);
         pstmt->execute();
 
-        std::cout << "Runner registered successfully!\n";
+        printSuccess("Runner registered successfully!");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
 
         delete pstmt;
         delete con;
+}
+
+// ===== Top Runners by Income =====
+void showTopRunnersByIncome() {
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+
+        sql::PreparedStatement* pstmt = con->prepareStatement(
+            "SELECT u.user_id, u.name, COALESCE(SUM(q.runner_share), 0) AS total_income "
+            "FROM users u "
+            "INNER JOIN errands e ON u.user_id = e.runner_id "
+            "INNER JOIN quotations q ON e.errand_id = q.errand_id "
+            "WHERE u.role = 2 AND q.status = 'Paid' "
+            "GROUP BY u.user_id, u.name "
+            "ORDER BY total_income DESC "
+            "LIMIT 5"
+        );
+        sql::ResultSet* res = pstmt->executeQuery();
+
+        clearScreen();
+        printMenuTitle("Top 5 Runners by Income");
+        
+        bool hasData = false;
+        while (res->next()) {
+            hasData = true;
+            std::string runnerName = res->getString("name");
+            double income = res->getDouble("total_income");
+            displayStarChart(runnerName, income);
+        }
+
+        if (!hasData) {
+            centerText("No runners with income data found.");
+        }
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+
+        delete res;
+        delete pstmt;
+        delete con;
+}
+
+// ===== Top Runners by Errands =====
+void showTopRunnersByErrands() {
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+
+        sql::PreparedStatement* pstmt = con->prepareStatement(
+            "SELECT u.user_id, u.name, COUNT(e.errand_id) AS total_errands "
+            "FROM users u "
+            "INNER JOIN errands e ON u.user_id = e.runner_id "
+            "WHERE u.role = 2 AND e.status = 'Completed' "
+            "GROUP BY u.user_id, u.name "
+            "ORDER BY total_errands DESC "
+            "LIMIT 5"
+        );
+        sql::ResultSet* res = pstmt->executeQuery();
+
+        clearScreen();
+        printMenuTitle("Top 5 Runners by Errands");
+        
+        bool hasData = false;
+        while (res->next()) {
+            hasData = true;
+            std::string runnerName = res->getString("name");
+            int errandCount = res->getInt("total_errands");
+            int stars = errandCount; // 1 star per errand for visualization
+            std::string starString(stars, '*');
+            centerText(runnerName + " : " + std::to_string(errandCount) + " errands (" + starString + ")");
+        }
+
+        if (!hasData) {
+            centerText("No runners with completed errands found.");
+        }
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+
+        delete res;
+        delete pstmt;
+        delete con;
+}
+
+// ===== System Revenue =====
+void showSystemRevenue() {
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+
+        sql::PreparedStatement* pstmt = con->prepareStatement(
+            "SELECT COALESCE(SUM(system_fee), 0) AS total_revenue "
+            "FROM quotations "
+            "WHERE status = 'Paid'"
+        );
+        sql::ResultSet* res = pstmt->executeQuery();
+
+        clearScreen();
+        printMenuTitle("System Revenue");
+        
+        if (res->next()) {
+            double revenue = res->getDouble("total_revenue");
+            if (revenue > 0) {
+                std::ostringstream revStream;
+                revStream << std::fixed << std::setprecision(2) << revenue;
+                centerText("Total System Revenue: RM " + revStream.str());
+            }
+            else {
+                centerText("No system revenue found. No paid quotations yet.");
+            }
+        }
+        else {
+            centerText("No revenue data available.");
+        }
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+
+        delete res;
+        delete pstmt;
+        delete con;
+}
+
+// ===== All Runner Revenue =====
+void showAllRunnerRevenue() {
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+
+        sql::PreparedStatement* pstmt = con->prepareStatement(
+            "SELECT COALESCE(SUM(runner_share), 0) AS total_revenue "
+            "FROM quotations "
+            "WHERE status = 'Paid'"
+        );
+        sql::ResultSet* res = pstmt->executeQuery();
+
+        clearScreen();
+        printMenuTitle("All Runner Revenue");
+        
+        if (res->next()) {
+            double revenue = res->getDouble("total_revenue");
+            if (revenue > 0) {
+                std::ostringstream revStream;
+                revStream << std::fixed << std::setprecision(2) << revenue;
+                centerText("Total Runner Revenue: RM " + revStream.str());
+            }
+            else {
+                centerText("No runner revenue found. No paid quotations yet.");
+            }
+        }
+        else {
+            centerText("No revenue data available.");
+        }
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+
+        delete res;
+        delete pstmt;
+        delete con;
+}
+
+// ===== Save Report Snapshot =====
+void saveReportSnapshot() {
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+
+        // Get top runner by income
+        std::string topRunnerName = "N/A";
+        sql::PreparedStatement* pstmt1 = con->prepareStatement(
+            "SELECT u.name, COALESCE(SUM(q.runner_share), 0) AS total_income "
+            "FROM users u "
+            "INNER JOIN errands e ON u.user_id = e.runner_id "
+            "INNER JOIN quotations q ON e.errand_id = q.errand_id "
+            "WHERE u.role = 2 AND q.status = 'Paid' "
+            "GROUP BY u.user_id, u.name "
+            "ORDER BY total_income DESC "
+            "LIMIT 1"
+        );
+        sql::ResultSet* res1 = pstmt1->executeQuery();
+        if (res1->next()) {
+            topRunnerName = res1->getString("name");
+        }
+        delete res1;
+        delete pstmt1;
+
+        // Get system revenue
+        double systemRevenue = 0.0;
+        sql::PreparedStatement* pstmt2 = con->prepareStatement(
+            "SELECT COALESCE(SUM(system_fee), 0) AS total_revenue "
+            "FROM quotations "
+            "WHERE status = 'Paid'"
+        );
+        sql::ResultSet* res2 = pstmt2->executeQuery();
+        if (res2->next()) {
+            systemRevenue = res2->getDouble("total_revenue");
+        }
+        delete res2;
+        delete pstmt2;
+
+        // Get total runner revenue
+        double totalRunnerRevenue = 0.0;
+        sql::PreparedStatement* pstmt3 = con->prepareStatement(
+            "SELECT COALESCE(SUM(runner_share), 0) AS total_revenue "
+            "FROM quotations "
+            "WHERE status = 'Paid'"
+        );
+        sql::ResultSet* res3 = pstmt3->executeQuery();
+        if (res3->next()) {
+            totalRunnerRevenue = res3->getDouble("total_revenue");
+        }
+        delete res3;
+        delete pstmt3;
+
+        // Get total errands count
+        int totalErrands = 0;
+        sql::PreparedStatement* pstmt4 = con->prepareStatement(
+            "SELECT COUNT(*) AS total_errands FROM errands"
+        );
+        sql::ResultSet* res4 = pstmt4->executeQuery();
+        if (res4->next()) {
+            totalErrands = res4->getInt("total_errands");
+        }
+        delete res4;
+        delete pstmt4;
+
+        // Insert report snapshot
+        sql::PreparedStatement* pstmt = con->prepareStatement(
+            "INSERT INTO reports (total_errands, top_runner, system_revenue, total_runner_revenue, report_date) "
+            "VALUES (?, ?, ?, ?, CURDATE())"
+        );
+        pstmt->setInt(1, totalErrands);
+        pstmt->setString(2, topRunnerName);
+        pstmt->setDouble(3, systemRevenue);
+        pstmt->setDouble(4, totalRunnerRevenue);
+        pstmt->execute();
+
+        clearScreen();
+        printMenuTitle("Report Snapshot Saved Successfully");
+        std::ostringstream sysRevStream, runnerRevStream;
+        sysRevStream << std::fixed << std::setprecision(2) << systemRevenue;
+        runnerRevStream << std::fixed << std::setprecision(2) << totalRunnerRevenue;
+        
+        centerText("Total Errands: " + std::to_string(totalErrands));
+        centerText("Top Runner: " + topRunnerName);
+        centerText("System Revenue: RM " + sysRevStream.str());
+        centerText("Total Runner Revenue: RM " + runnerRevStream.str());
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+
+        delete pstmt;
+        delete con;
+}
+
+// ===== View All Receipts =====
+void viewAllReceipts() {
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+
+        sql::PreparedStatement* pstmt = con->prepareStatement(
+            "SELECT p.payment_id, p.transaction_id, p.quote_id, p.errand_id, p.price, p.pay_status, p.payment_method, "
+            "q.base_price_per_km, q.distance_km, q.runner_percentage, q.system_percentage, "
+            "q.runner_share, q.system_fee, p.created_at "
+            "FROM payments p "
+            "INNER JOIN quotations q ON p.quote_id = q.quote_id "
+            "ORDER BY p.created_at DESC"
+        );
+        sql::ResultSet* res = pstmt->executeQuery();
+
+        clearScreen();
+        printMenuTitle("All Payment Receipts");
+        bool hasReceipts = false;
+
+        while (res->next()) {
+            hasReceipts = true;
+            std::string transactionId = res->getString("transaction_id");
+            int quoteId = res->getInt("quote_id");
+            int errandId = res->getInt("errand_id");
+            double base = res->getDouble("base_price_per_km");
+            double distance = res->getDouble("distance_km");
+            double runnerPerc = res->getDouble("runner_percentage");
+            double systemPerc = res->getDouble("system_percentage");
+            double total = res->getDouble("price");
+            double runnerFee = res->getDouble("runner_share");
+            double systemFee = res->getDouble("system_fee");
+            std::string payStatus = res->getString("pay_status");
+            std::string paymentMethod = res->getString("payment_method");
+            
+            std::ostringstream baseStream, totalStream, runnerFeeStream, systemFeeStream;
+            baseStream << std::fixed << std::setprecision(2) << base;
+            totalStream << std::fixed << std::setprecision(2) << total;
+            runnerFeeStream << std::fixed << std::setprecision(2) << runnerFee;
+            systemFeeStream << std::fixed << std::setprecision(2) << systemFee;
+
+            // ================= RECEIPT =================
+            centerText("==========================================");
+            centerText("       ERMS PAYMENT RECEIPT              ");
+            centerText("==========================================");
+            centerText("Transaction ID : " + transactionId);
+            centerText("Quotation ID   : " + std::to_string(quoteId));
+            centerText("Errand ID      : " + std::to_string(errandId));
+            centerText("------------------------------------------");
+            centerText("Base Price/km  : RM " + baseStream.str());
+            centerText("Distance       : " + std::to_string(static_cast<int>(distance)) + " km");
+            centerText("------------------------------------------");
+            centerText("Total Paid     : RM " + totalStream.str());
+            centerText("Runner (" + std::to_string(static_cast<int>(runnerPerc)) + "%)   : RM " + runnerFeeStream.str());
+            centerText("System (" + std::to_string(static_cast<int>(systemPerc)) + "%)   : RM " + systemFeeStream.str());
+            centerText("------------------------------------------");
+            centerText("Payment Status : " + payStatus);
+            centerText("Method         : " + paymentMethod);
+            centerText("Payment Date   : " + res->getString("created_at"));
+            centerText("==========================================");
+            std::cout << "\n";
+        }
+
+        if (!hasReceipts) {
+            centerText("No receipts found.");
+        }
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+
+        delete res;
+        delete pstmt;
+        delete con;
+}
+
+// ===== Search Users =====
+void searchUsers() {
+    clearScreen();
+    printMenuTitle("Search Users");
+    printHeader("SEARCH BY");
+    centerText("1. Name");
+    centerText("2. Email");
+    centerText("3. Role");
+    printHeader("");
+    std::cout << "\n";
+    centerText("Enter choice: ");
+    
+    int searchType = getMenuChoice(1, 3);
+    
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+    
+    sql::PreparedStatement* pstmt = nullptr;
+    
+    if (searchType == 1) {
+        std::string name;
+            while (true) {
+                name = getCenteredInput("Enter name (partial match, or 'back' to cancel): ");
+                if (name == "back" || name == "Back" || name == "BACK") {
+                    delete con;
+                    return;
+                }
+                if (!name.empty() && name.length() >= 1) {
+                    break;
+                }
+                else {
+                    centerText("Name cannot be empty! Please enter a name.");
+                }
+            }
+            pstmt = con->prepareStatement(
+                "SELECT user_id, name, email, c_number, role FROM users WHERE name LIKE ?"
+            );
+            pstmt->setString(1, "%" + name + "%");
+        }
+        else if (searchType == 2) {
+            std::string email;
+            while (true) {
+                email = getCenteredInput("Enter email (partial match, or 'back' to cancel): ");
+                if (email == "back" || email == "Back" || email == "BACK") {
+                    delete con;
+                    return;
+                }
+                if (!email.empty() && email.length() >= 1) {
+                    break;
+                }
+                else {
+                    centerText("Email cannot be empty! Please enter an email.");
+                }
+            }
+            pstmt = con->prepareStatement(
+                "SELECT user_id, name, email, c_number, role FROM users WHERE email LIKE ?"
+            );
+            pstmt->setString(1, "%" + email + "%");
+        }
+        else if (searchType == 3) {
+            int role;
+            while (true) {
+                role = getCenteredIntInput("Enter role (0=User, 1=Admin, 2=Runner, or -1 to go back): ");
+                if (role == -1) {
+                    delete con;
+                    return;
+                }
+                if (role >= 0 && role <= 2) {
+                    break;
+                }
+                else {
+                    centerText("Invalid input! Please enter 0, 1, 2, or -1 to go back.");
+                }
+            }
+            pstmt = con->prepareStatement(
+                "SELECT user_id, name, email, c_number, role FROM users WHERE role = ?"
+            );
+            pstmt->setInt(1, role);
+        }
+        
+        sql::ResultSet* res = pstmt->executeQuery();
+        
+        clearScreen();
+        printMenuTitle("Search Results - Users");
+        
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Name", 20},
+            {"Email", 25},
+            {"Contact", 15},
+            {"Role", 10}
+        };
+        std::vector<int> widths = {5, 20, 25, 15, 10};
+        
+        printTableHeader(columns);
+        
+        bool hasResults = false;
+        while (res->next()) {
+            hasResults = true;
+            int role = res->getInt("role");
+            std::string roleText = (role == 0) ? "User" : (role == 1) ? "Admin" : "Runner";
+            
+            std::vector<std::string> row = {
+                std::to_string(res->getInt("user_id")),
+                truncateString(res->getString("name"), 20),
+                truncateString(res->getString("email"), 25),
+                truncateString(res->getString("c_number"), 15),
+                truncateString(roleText, 10)
+            };
+            printTableRow(row, widths);
+        }
+        
+        if (!hasResults) {
+            centerText("No users found.");
+        }
+        
+        printTableFooter(widths);
+        std::cout << "\nPress Enter to continue...";
+        // Clear any remaining input in buffer
+        std::cin.clear();
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+        
+        delete res;
+        delete pstmt;
+        delete con;
+}
+
+// ===== Search Errands =====
+void searchErrands() {
+    clearScreen();
+    printMenuTitle("Search Errands");
+    printHeader("SEARCH BY");
+    centerText("1. Errand ID");
+    centerText("2. Description (keyword)");
+    centerText("3. Requester Name");
+    centerText("4. Runner Name");
+    centerText("5. Status");
+    printHeader("");
+    std::cout << "\n";
+    centerText("Enter choice: ");
+    
+    int searchType = getMenuChoice(1, 5);
+
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+    
+    sql::PreparedStatement* pstmt = nullptr;
+    
+    if (searchType == 1) {
+        int errandId;
+            while (true) {
+                errandId = getCenteredIntInput("Enter Errand ID (or 0 to go back): ");
+                if (errandId == 0) {
+                    delete con;
+                    return;
+                }
+                if (errandId > 0) break;
+                else centerText("Invalid input! Please enter a valid errand ID or 0 to go back.");
+            }
+            pstmt = con->prepareStatement(
+                "SELECT e.errand_id, u.name AS requester, e.description, e.pickup_loc, "
+                "e.dropoff_loc, e.distance, e.status, e.created_at, r.name AS runner "
+                "FROM errands e "
+                "LEFT JOIN users u ON e.requester_id = u.user_id "
+                "LEFT JOIN users r ON e.runner_id = r.user_id "
+                "WHERE e.errand_id = ?"
+            );
+        pstmt->setInt(1, errandId);
     }
-    catch (sql::SQLException& e) {
-        std::cerr << "Database error: " << e.what() << "\n";
+    else if (searchType == 2) {
+        std::string keyword;
+            while (true) {
+                keyword = getCenteredInput("Enter keyword (or 'back' to cancel): ");
+                if (keyword == "back" || keyword == "Back" || keyword == "BACK") {
+                    delete con;
+                    return;
+                }
+                if (!keyword.empty() && keyword.length() >= 1) {
+                    break;
+                }
+                else {
+                    centerText("Keyword cannot be empty! Please enter a keyword.");
+                }
+            }
+        pstmt = con->prepareStatement(
+            "SELECT e.errand_id, u.name AS requester, e.description, e.pickup_loc, "
+            "e.dropoff_loc, e.distance, e.status, e.created_at, r.name AS runner "
+            "FROM errands e "
+            "LEFT JOIN users u ON e.requester_id = u.user_id "
+            "LEFT JOIN users r ON e.runner_id = r.user_id "
+            "WHERE e.description LIKE ?"
+        );
+        pstmt->setString(1, "%" + keyword + "%");
+    }
+    else if (searchType == 3) {
+        std::string requesterName;
+        while (true) {
+            requesterName = getCenteredInput("Enter requester name (or 'back' to cancel): ");
+            if (requesterName == "back" || requesterName == "Back" || requesterName == "BACK") {
+                delete con;
+                return;
+            }
+            if (!requesterName.empty() && requesterName.length() >= 1) {
+                break;
+            }
+            else {
+                centerText("Requester name cannot be empty! Please enter a name.");
+            }
+        }
+        pstmt = con->prepareStatement(
+            "SELECT e.errand_id, u.name AS requester, e.description, e.pickup_loc, "
+            "e.dropoff_loc, e.distance, e.status, e.created_at, r.name AS runner "
+            "FROM errands e "
+            "LEFT JOIN users u ON e.requester_id = u.user_id "
+            "LEFT JOIN users r ON e.runner_id = r.user_id "
+            "WHERE u.name LIKE ?"
+        );
+        pstmt->setString(1, "%" + requesterName + "%");
+    }
+    else if (searchType == 4) {
+        std::string runnerName;
+        while (true) {
+            runnerName = getCenteredInput("Enter runner name (or 'back' to cancel): ");
+            if (runnerName == "back" || runnerName == "Back" || runnerName == "BACK") {
+                delete con;
+                return;
+            }
+            if (!runnerName.empty() && runnerName.length() >= 1) {
+                break;
+            }
+            else {
+                centerText("Runner name cannot be empty! Please enter a name.");
+            }
+        }
+        pstmt = con->prepareStatement(
+            "SELECT e.errand_id, u.name AS requester, e.description, e.pickup_loc, "
+            "e.dropoff_loc, e.distance, e.status, e.created_at, r.name AS runner "
+            "FROM errands e "
+            "LEFT JOIN users u ON e.requester_id = u.user_id "
+            "LEFT JOIN users r ON e.runner_id = r.user_id "
+            "WHERE r.name LIKE ?"
+        );
+        pstmt->setString(1, "%" + runnerName + "%");
+    }
+    else if (searchType == 5) {
+        std::string status;
+        while (true) {
+            status = getCenteredInput("Enter status (Pending/Assigned/Completed, or 'back' to cancel): ");
+            if (status == "back" || status == "Back" || status == "BACK") {
+                delete con;
+                return;
+            }
+            if (status == "Pending" || status == "Assigned" || status == "Completed") {
+                break;
+            }
+            else {
+                centerText("Invalid status! Please enter: Pending, Assigned, Completed, or 'back' to cancel.");
+            }
+        }
+        pstmt = con->prepareStatement(
+            "SELECT e.errand_id, u.name AS requester, e.description, e.pickup_loc, "
+            "e.dropoff_loc, e.distance, e.status, e.created_at, r.name AS runner "
+            "FROM errands e "
+            "LEFT JOIN users u ON e.requester_id = u.user_id "
+            "LEFT JOIN users r ON e.runner_id = r.user_id "
+            "WHERE e.status = ?"
+        );
+        pstmt->setString(1, status);
+    }
+        
+        sql::ResultSet* res = pstmt->executeQuery();
+        
+        clearScreen();
+        printMenuTitle("Search Results - Errands");
+        
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Requester", 15},
+            {"Runner", 15},
+            {"Description", 25},
+            {"Pickup", 15},
+            {"Dropoff", 15},
+            {"Distance", 10},
+            {"Status", 12},
+            {"Created At", 20}
+        };
+        std::vector<int> widths = {5, 15, 15, 25, 15, 15, 10, 12, 20};
+        
+        printTableHeader(columns);
+        
+        bool hasResults = false;
+        while (res->next()) {
+            hasResults = true;
+            std::string runnerName = res->isNull("runner") ? "Unassigned" : res->getString("runner");
+            std::ostringstream distStream;
+            distStream << std::fixed << std::setprecision(2) << res->getDouble("distance");
+            
+            std::vector<std::string> row = {
+                std::to_string(res->getInt("errand_id")),
+                truncateString(res->getString("requester"), 15),
+                truncateString(runnerName, 15),
+                truncateString(res->getString("description"), 25),
+                truncateString(res->getString("pickup_loc"), 15),
+                truncateString(res->getString("dropoff_loc"), 15),
+                distStream.str(),
+                truncateString(res->getString("status"), 12),
+                truncateString(res->getString("created_at"), 20)
+            };
+            printTableRow(row, widths);
+        }
+        
+        if (!hasResults) {
+            centerText("No errands found.");
+        }
+        
+        printTableFooter(widths);
+        std::cout << "\nPress Enter to continue...";
+        // Clear any remaining input in buffer
+        std::cin.clear();
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+        
+        delete res;
+        delete pstmt;
+        delete con;
+}
+
+// ===== Search Receipts =====
+void searchReceipts() {
+    clearScreen();
+    printMenuTitle("Search Receipts");
+    printHeader("SEARCH BY");
+    centerText("1. Transaction ID");
+    centerText("2. Quotation ID");
+    centerText("3. Errand ID");
+    printHeader("");
+    std::cout << "\n";
+    centerText("Enter choice: ");
+    
+    int searchType = getMenuChoice(1, 3);
+    
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+    
+        sql::PreparedStatement* pstmt = nullptr;
+        
+        if (searchType == 1) {
+            std::string transactionId;
+            while (true) {
+                transactionId = getCenteredInput("Enter Transaction ID (or 'back' to cancel): ");
+                if (transactionId == "back" || transactionId == "Back" || transactionId == "BACK") {
+                    delete con;
+                    return;
+                }
+                if (!transactionId.empty() && transactionId.length() >= 1) {
+                    break;
+                }
+                else {
+                    centerText("Transaction ID cannot be empty! Please enter a transaction ID.");
+                }
+            }
+            pstmt = con->prepareStatement(
+                "SELECT p.payment_id, p.transaction_id, p.quote_id, p.errand_id, p.price, p.pay_status, p.payment_method, "
+                "q.base_price_per_km, q.distance_km, q.runner_percentage, q.system_percentage, "
+                "q.runner_share, q.system_fee, p.created_at "
+                "FROM payments p "
+                "INNER JOIN quotations q ON p.quote_id = q.quote_id "
+                "WHERE p.transaction_id LIKE ?"
+            );
+            pstmt->setString(1, "%" + transactionId + "%");
+        }
+        else if (searchType == 2) {
+            int quoteId;
+            while (true) {
+                quoteId = getCenteredIntInput("Enter Quotation ID (or 0 to go back): ");
+                if (quoteId == 0) {
+                    delete con;
+                    return;
+                }
+                if (quoteId > 0) break;
+                else centerText("Invalid input! Please enter a valid quotation ID or 0 to go back.");
+            }
+            pstmt = con->prepareStatement(
+                "SELECT p.payment_id, p.transaction_id, p.quote_id, p.errand_id, p.price, p.pay_status, p.payment_method, "
+                "q.base_price_per_km, q.distance_km, q.runner_percentage, q.system_percentage, "
+                "q.runner_share, q.system_fee, p.created_at "
+                "FROM payments p "
+                "INNER JOIN quotations q ON p.quote_id = q.quote_id "
+                "WHERE p.quote_id = ?"
+            );
+            pstmt->setInt(1, quoteId);
+        }
+        else if (searchType == 3) {
+            int errandId;
+            while (true) {
+                errandId = getCenteredIntInput("Enter Errand ID (or 0 to go back): ");
+                if (errandId == 0) {
+                    delete con;
+                    return;
+                }
+                if (errandId > 0) break;
+                else centerText("Invalid input! Please enter a valid errand ID or 0 to go back.");
+            }
+            pstmt = con->prepareStatement(
+                "SELECT p.payment_id, p.transaction_id, p.quote_id, p.errand_id, p.price, p.pay_status, p.payment_method, "
+                "q.base_price_per_km, q.distance_km, q.runner_percentage, q.system_percentage, "
+                "q.runner_share, q.system_fee, p.created_at "
+                "FROM payments p "
+                "INNER JOIN quotations q ON p.quote_id = q.quote_id "
+                "WHERE p.errand_id = ?"
+            );
+            pstmt->setInt(1, errandId);
+        }
+        
+        sql::ResultSet* res = pstmt->executeQuery();
+        
+        clearScreen();
+        printMenuTitle("Search Results - Receipts");
+        bool hasResults = false;
+        
+        while (res->next()) {
+            hasResults = true;
+            std::string transactionId = res->getString("transaction_id");
+            int quoteId = res->getInt("quote_id");
+            int errandId = res->getInt("errand_id");
+            double base = res->getDouble("base_price_per_km");
+            double distance = res->getDouble("distance_km");
+            double runnerPerc = res->getDouble("runner_percentage");
+            double systemPerc = res->getDouble("system_percentage");
+            double total = res->getDouble("price");
+            double runnerFee = res->getDouble("runner_share");
+            double systemFee = res->getDouble("system_fee");
+            std::string payStatus = res->getString("pay_status");
+            std::string paymentMethod = res->getString("payment_method");
+            
+            std::ostringstream baseStream, totalStream, runnerFeeStream, systemFeeStream;
+            baseStream << std::fixed << std::setprecision(2) << base;
+            totalStream << std::fixed << std::setprecision(2) << total;
+            runnerFeeStream << std::fixed << std::setprecision(2) << runnerFee;
+            systemFeeStream << std::fixed << std::setprecision(2) << systemFee;
+            
+            centerText("==========================================");
+            centerText("       ERMS PAYMENT RECEIPT              ");
+            centerText("==========================================");
+            centerText("Transaction ID : " + transactionId);
+            centerText("Quotation ID   : " + std::to_string(quoteId));
+            centerText("Errand ID      : " + std::to_string(errandId));
+            centerText("------------------------------------------");
+            centerText("Base Price/km  : RM " + baseStream.str());
+            centerText("Distance       : " + std::to_string(static_cast<int>(distance)) + " km");
+            centerText("------------------------------------------");
+            centerText("Total Paid     : RM " + totalStream.str());
+            centerText("Runner (" + std::to_string(static_cast<int>(runnerPerc)) + "%)   : RM " + runnerFeeStream.str());
+            centerText("System (" + std::to_string(static_cast<int>(systemPerc)) + "%)   : RM " + systemFeeStream.str());
+            centerText("------------------------------------------");
+            centerText("Payment Status : " + payStatus);
+            centerText("Method         : " + paymentMethod);
+            centerText("Payment Date   : " + res->getString("created_at"));
+            centerText("==========================================");
+            std::cout << "\n";
+        }
+        
+        if (!hasResults) {
+            centerText("No receipts found.");
+        }
+        std::cout << "\nPress Enter to continue...";
+        // Clear any remaining input in buffer
+        std::cin.clear();
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+        
+        delete res;
+        delete pstmt;
+        delete con;
+}
+
+// ===== Search Runners =====
+void searchRunners() {
+    clearScreen();
+    printMenuTitle("Search Runners");
+    printHeader("SEARCH BY");
+    centerText("1. Name");
+    centerText("2. Email");
+    printHeader("");
+    std::cout << "\n";
+    centerText("Enter choice: ");
+    
+    int searchType = getMenuChoice(1, 2);
+
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+    
+    sql::PreparedStatement* pstmt = nullptr;
+    
+    if (searchType == 1) {
+        std::string name;
+            while (true) {
+                name = getCenteredInput("Enter name (partial match, or 'back' to cancel): ");
+                if (name == "back" || name == "Back" || name == "BACK") {
+                    delete con;
+                    return;
+                }
+                if (!name.empty() && name.length() >= 1) {
+                    break;
+                }
+                else {
+                    centerText("Name cannot be empty! Please enter a name.");
+                }
+            }
+        pstmt = con->prepareStatement(
+            "SELECT user_id, name, email, c_number FROM users WHERE role = 2 AND name LIKE ?"
+        );
+        pstmt->setString(1, "%" + name + "%");
+    }
+    else if (searchType == 2) {
+        std::string email;
+            while (true) {
+                email = getCenteredInput("Enter email (partial match, or 'back' to cancel): ");
+                if (email == "back" || email == "Back" || email == "BACK") {
+                    delete con;
+                    return;
+                }
+                if (!email.empty() && email.length() >= 1) {
+                    break;
+                }
+                else {
+                    centerText("Email cannot be empty! Please enter an email.");
+                }
+            }
+        pstmt = con->prepareStatement(
+            "SELECT user_id, name, email, c_number FROM users WHERE role = 2 AND email LIKE ?"
+        );
+        pstmt->setString(1, "%" + email + "%");
+    }
+        
+        sql::ResultSet* res = pstmt->executeQuery();
+        
+        clearScreen();
+        printMenuTitle("Search Results - Runners");
+        
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Name", 20},
+            {"Email", 25},
+            {"Contact", 15}
+        };
+        std::vector<int> widths = {5, 20, 25, 15};
+        
+        printTableHeader(columns);
+        
+        bool hasResults = false;
+        while (res->next()) {
+            hasResults = true;
+            std::vector<std::string> row = {
+                std::to_string(res->getInt("user_id")),
+                truncateString(res->getString("name"), 20),
+                truncateString(res->getString("email"), 25),
+                truncateString(res->getString("c_number"), 15)
+            };
+            printTableRow(row, widths);
+        }
+        
+        if (!hasResults) {
+            centerText("No runners found.");
+        }
+        
+        printTableFooter(widths);
+        std::cout << "\nPress Enter to continue...";
+        // Clear any remaining input in buffer
+        std::cin.clear();
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+        
+        delete res;
+        delete pstmt;
+        delete con;
+}
+
+// ===== Search Quotations =====
+void searchQuotations() {
+    clearScreen();
+    printMenuTitle("Search Quotations");
+    printHeader("SEARCH BY");
+    centerText("1. Quotation ID");
+    centerText("2. Errand ID");
+    centerText("3. Status");
+    printHeader("");
+    std::cout << "\n";
+    centerText("Enter choice: ");
+    
+    int searchType = getMenuChoice(1, 3);
+    
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+    
+    sql::PreparedStatement* pstmt = nullptr;
+    
+    if (searchType == 1) {
+        int quoteId;
+            while (true) {
+                quoteId = getCenteredIntInput("Enter Quotation ID (or 0 to go back): ");
+                if (quoteId == 0) {
+                    delete con;
+                    return;
+                }
+                if (quoteId > 0) break;
+                else centerText("Invalid input! Please enter a valid quotation ID or 0 to go back.");
+            }
+            pstmt = con->prepareStatement(
+                "SELECT q.quote_id, q.errand_id, q.base_price_per_km, q.distance_km, "
+                "q.runner_percentage, q.system_percentage, q.runner_share, q.system_fee, q.status, q.transaction_id "
+                "FROM quotations q WHERE q.quote_id = ?"
+            );
+            pstmt->setInt(1, quoteId);
+        }
+        else if (searchType == 2) {
+            int errandId;
+            while (true) {
+                errandId = getCenteredIntInput("Enter Errand ID (or 0 to go back): ");
+                if (errandId == 0) {
+                    delete con;
+                    return;
+                }
+                if (errandId > 0) break;
+                else centerText("Invalid input! Please enter a valid errand ID or 0 to go back.");
+            }
+            pstmt = con->prepareStatement(
+                "SELECT q.quote_id, q.errand_id, q.base_price_per_km, q.distance_km, "
+                "q.runner_percentage, q.system_percentage, q.runner_share, q.system_fee, q.status, q.transaction_id "
+                "FROM quotations q WHERE q.errand_id = ?"
+            );
+            pstmt->setInt(1, errandId);
+        }
+        else if (searchType == 3) {
+            std::string status;
+            while (true) {
+                status = getCenteredInput("Enter status (Pending/Paid, or 'back' to cancel): ");
+                if (status == "back" || status == "Back" || status == "BACK") {
+                    delete con;
+                    return;
+                }
+                if (status == "Pending" || status == "Paid") {
+                    break;
+                }
+                else {
+                    centerText("Invalid status! Please enter: Pending, Paid, or 'back' to cancel.");
+                }
+            }
+            pstmt = con->prepareStatement(
+                "SELECT q.quote_id, q.errand_id, q.base_price_per_km, q.distance_km, "
+                "q.runner_percentage, q.system_percentage, q.runner_share, q.system_fee, q.status, q.transaction_id "
+                "FROM quotations q WHERE q.status = ?"
+            );
+            pstmt->setString(1, status);
+        }
+        
+        sql::ResultSet* res = pstmt->executeQuery();
+        
+        clearScreen();
+        printMenuTitle("Search Results - Quotations");
+        
+        bool hasResults = false;
+        while (res->next()) {
+            hasResults = true;
+            std::ostringstream baseStream, runnerFeeStream, systemFeeStream;
+            baseStream << std::fixed << std::setprecision(2) << res->getDouble("base_price_per_km");
+            runnerFeeStream << std::fixed << std::setprecision(2) << res->getDouble("runner_share");
+            systemFeeStream << std::fixed << std::setprecision(2) << res->getDouble("system_fee");
+            
+            centerText("+------------------------------------------+");
+            centerText("|        QUOTATION INFORMATION              |");
+            centerText("+------------------------------------------+");
+            centerText("| Quotation ID   : " + std::to_string(res->getInt("quote_id")) + std::string(20, ' ') + "|");
+            centerText("| Errand ID      : " + std::to_string(res->getInt("errand_id")) + std::string(20, ' ') + "|");
+            centerText("| Base Price/km  : RM " + baseStream.str() + std::string(15, ' ') + "|");
+            centerText("| Distance       : " + std::to_string(static_cast<int>(res->getDouble("distance_km"))) + " km" + std::string(18, ' ') + "|");
+            centerText("| Runner %       : " + std::to_string(static_cast<int>(res->getDouble("runner_percentage"))) + "%" + std::string(19, ' ') + "|");
+            centerText("| System %       : " + std::to_string(static_cast<int>(res->getDouble("system_percentage"))) + "%" + std::string(19, ' ') + "|");
+            centerText("| Runner Fee     : RM " + runnerFeeStream.str() + std::string(15, ' ') + "|");
+            centerText("| System Fee     : RM " + systemFeeStream.str() + std::string(15, ' ') + "|");
+            centerText("| Status         : " + res->getString("status") + std::string(20, ' ') + "|");
+            if (!res->isNull("transaction_id")) {
+                centerText("| Transaction ID : " + res->getString("transaction_id") + std::string(15, ' ') + "|");
+            }
+            centerText("+------------------------------------------+");
+            std::cout << "\n";
+        }
+        
+        if (!hasResults) {
+            centerText("No quotations found.");
+        }
+        
+        std::cout << "\nPress Enter to continue...";
+        // Clear any remaining input in buffer
+        std::cin.clear();
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+        
+        delete res;
+        delete pstmt;
+        delete con;
+}
+
+// ===== Search Module =====
+void searchModule() {
+    while (true) {
+        clearScreen();
+        printMenuTitle("Search Module");
+        printHeader("SEARCH OPTIONS");
+        centerText("1. Search Users");
+        centerText("2. Search Errands");
+        centerText("3. Search Receipts");
+        centerText("4. Search Runners");
+        centerText("5. Search Quotations");
+        centerText("0. Back to Admin Dashboard");
+        printHeader("");
+        std::cout << "\n";
+        centerText("Enter choice: ");
+
+        int choice = getMenuChoice(0, 5);
+        if (choice == 0) break;
+
+        if (choice == 1) {
+            searchUsers();
+        }
+        else if (choice == 2) {
+            searchErrands();
+        }
+        else if (choice == 3) {
+            searchReceipts();
+        }
+        else if (choice == 4) {
+            searchRunners();
+        }
+        else if (choice == 5) {
+            searchQuotations();
+        }
     }
 }
 
 // ===== Reporting Module =====
 void reportingModule() {
     while (true) {
-        std::cout << "\n=== Reporting Module ===\n";
-        std::cout << "1. User Activity Report\n";
-        std::cout << "2. Runner Activity Report\n";
-        std::cout << "3. Errand Report\n";
-        std::cout << "4. Trend / Statistics\n";
-        std::cout << "5. General / Combined Report\n";
-        std::cout << "0. Back to Admin Dashboard\nEnter choice: ";
+        clearScreen();
+        printMenuTitle("Reporting Module");
+        printHeader("REPORTING OPTIONS");
+        centerText("1. Top Runners by Income");
+        centerText("2. Top Runners by Errands");
+        centerText("3. System Revenue");
+        centerText("4. All Runner Revenue");
+        centerText("5. Save Report Snapshot");
+        centerText("6. View All Receipts");
+        centerText("0. Back to Admin Dashboard");
+        printHeader("");
+        std::cout << "\n";
+        centerText("Enter choice: ");
 
-        int choice = getMenuChoice(0, 5);
+        int choice = getMenuChoice(0, 6);
         if (choice == 0) break;
 
-        try {
-            sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-            sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
-            con->setSchema("erms");
-
-            if (choice == 1) {
-                // User Activity Report
-                sql::PreparedStatement* pstmt = con->prepareStatement(
-                    "SELECT u.user_id, u.name, COUNT(e.errand_id) AS total_errands, "
-                    "SUM(e.status='Pending') AS pending, SUM(e.status='Assigned') AS assigned, SUM(e.status='Completed') AS completed "
-                    "FROM users u LEFT JOIN errands e ON u.user_id=e.requester_id "
-                    "WHERE u.role=0 GROUP BY u.user_id ORDER BY u.name"
-                );
-                sql::ResultSet* res = pstmt->executeQuery();
-                std::cout << "\n--- User Activity Report ---\n";
-                std::cout << std::left << std::setw(5) << "ID"
-                    << std::setw(20) << "Name"
-                    << std::setw(8) << "Total"
-                    << std::setw(8) << "Pending"
-                    << std::setw(8) << "Assigned"
-                    << std::setw(8) << "Completed" << "\n";
-                std::cout << std::string(60, '-') << "\n";
-
-                while (res->next()) {
-                    std::cout << std::setw(5) << res->getInt("user_id")
-                        << std::setw(20) << truncateString(res->getString("name"), 20)
-                        << std::setw(8) << res->getInt("total_errands")
-                        << std::setw(8) << res->getInt("pending")
-                        << std::setw(8) << res->getInt("assigned")
-                        << std::setw(8) << res->getInt("completed")
-                        << "\n";
-                }
-
-                delete res;
-                delete pstmt;
-            }
-            else if (choice == 2) {
-                // Runner Activity Report
-                sql::PreparedStatement* pstmt = con->prepareStatement(
-                    "SELECT u.user_id, u.name, COUNT(e.errand_id) AS total_errands, "
-                    "SUM(e.status='Pending') AS pending, SUM(e.status='Assigned') AS assigned, SUM(e.status='Completed') AS completed "
-                    "FROM users u LEFT JOIN errands e ON u.user_id=e.runner_id "
-                    "WHERE u.role=2 GROUP BY u.user_id ORDER BY u.name"
-                );
-                sql::ResultSet* res = pstmt->executeQuery();
-                std::cout << "\n--- Runner Activity Report ---\n";
-                std::cout << std::left << std::setw(5) << "ID"
-                    << std::setw(20) << "Name"
-                    << std::setw(8) << "Total"
-                    << std::setw(8) << "Pending"
-                    << std::setw(8) << "Assigned"
-                    << std::setw(8) << "Completed" << "\n";
-                std::cout << std::string(60, '-') << "\n";
-
-                while (res->next()) {
-                    std::cout << std::setw(5) << res->getInt("user_id")
-                        << std::setw(20) << truncateString(res->getString("name"), 20)
-                        << std::setw(8) << res->getInt("total_errands")
-                        << std::setw(8) << res->getInt("pending")
-                        << std::setw(8) << res->getInt("assigned")
-                        << std::setw(8) << res->getInt("completed")
-                        << "\n";
-                }
-
-                delete res;
-                delete pstmt;
-            }
-            else if (choice == 3) {
-                // Errand Report
-                viewAllErrands();
-            }
-            else if (choice == 4) {
-                // Trend / Statistics
-                sql::PreparedStatement* pstmt = con->prepareStatement(
-                    "SELECT DATE(created_at) AS date, COUNT(*) AS total_errands, "
-                    "SUM(status='Pending') AS pending, SUM(status='Assigned') AS assigned, SUM(status='Completed') AS completed "
-                    "FROM errands GROUP BY DATE(created_at) ORDER BY DATE(created_at)"
-                );
-                sql::ResultSet* res = pstmt->executeQuery();
-                std::cout << "\n--- Trend / Statistics ---\n";
-                std::cout << std::left
-                    << std::setw(12) << "Date"
-                    << std::setw(8) << "Total"
-                    << std::setw(8) << "Pending"
-                    << std::setw(8) << "Assigned"
-                    << std::setw(8) << "Completed" << "\n";
-                std::cout << std::string(44, '-') << "\n";
-
-                while (res->next()) {
-                    std::cout << std::setw(12) << truncateString(res->getString("date"), 12)
-                        << std::setw(8) << res->getInt("total_errands")
-                        << std::setw(8) << res->getInt("pending")
-                        << std::setw(8) << res->getInt("assigned")
-                        << std::setw(8) << res->getInt("completed") << "\n";
-                }
-
-                delete res;
-                delete pstmt;
-            }
-            else if (choice == 5) {
-                // General / Combined Report
-                viewAllUsers();
-                viewAllErrands();
-            }
-
-            delete con;
+        if (choice == 1) {
+            showTopRunnersByIncome();
         }
-        catch (sql::SQLException& e) {
-            std::cerr << "Database error: " << e.what() << "\n";
+        else if (choice == 2) {
+            showTopRunnersByErrands();
+        }
+        else if (choice == 3) {
+            showSystemRevenue();
+        }
+        else if (choice == 4) {
+            showAllRunnerRevenue();
+        }
+        else if (choice == 5) {
+            saveReportSnapshot();
+        }
+        else if (choice == 6) {
+            viewAllReceipts();
         }
     }
 }
@@ -368,16 +1570,22 @@ void reportingModule() {
 // ===== Admin menu =====
 void admin_menu(const std::string& adminUsername) {
     while (true) {
-        std::cout << "\n=== Admin Dashboard ===\n";
-        std::cout << "1. View all users\n";
-        std::cout << "2. View all errands\n";
-        std::cout << "3. Update errand status\n";
-        std::cout << "4. Assign errand to runner\n";
-        std::cout << "5. Register runner manually\n";
-        std::cout << "6. Reporting Module\n";
-        std::cout << "0. Logout\nEnter choice: ";
+        clearScreen();
+        printMenuTitle("Admin Dashboard - Welcome " + adminUsername);
+        printHeader("ADMIN MENU");
+        centerText("1. View all users");
+        centerText("2. View all errands");
+        centerText("3. Update errand status");
+        centerText("4. Assign errand to runner");
+        centerText("5. Register runner manually");
+        centerText("6. Reporting Module");
+        centerText("7. Search Module");
+        centerText("0. Logout");
+        printHeader("");
+        std::cout << "\n";
+        centerText("Enter choice: ");
 
-        int choice = getMenuChoice(0, 6);
+        int choice = getMenuChoice(0, 7);
         if (choice == 0) break;
 
         switch (choice) {
@@ -387,6 +1595,7 @@ void admin_menu(const std::string& adminUsername) {
         case 4: assignErrandToRunner(); break;
         case 5: registerRunner(); break;
         case 6: reportingModule(); break;
+        case 7: searchModule(); break;
         default: std::cout << "Invalid choice.\n";
         }
     }

@@ -8,4 +8,4 @@ void admin_menu();
 
 // Forward declarations
 bool registerUser();
-int getMenuChoice(int min, int max);
+void forgetPassword();

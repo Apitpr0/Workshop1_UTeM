@@ -1,37 +1,49 @@
 #include "loginpage.h"
 #include <iostream>
 #include <memory>
+#include <limits>
 #include <mysql_driver.h>
 #include <mysql_connection.h>
 #include <cppconn/prepared_statement.h>
 #include <cppconn/resultset.h>
 #include "hash.h"
+#include "utils.h"
 
 // Helper login function
 static std::tuple<int, std::string> loginWithRole(int expectedRole, const std::string& roleName) {
     std::string username, password;
 
     while (true) {
-        std::cout << "\n=== " << roleName << " Login ===\n";
+        clearScreen();
+        printMenuTitle(roleName + " Login");
+        printInfo("Type 'back' at any time to return to main menu");
+        std::cout << "\n";
 
         // Username input with space check
         while (true) {
-            std::cout << "Username: ";
-            std::getline(std::cin, username);
+            username = getCenteredInput("Username (or 'back' to cancel): ");
+            if (username == "back" || username == "Back" || username == "BACK") {
+                return { -1, "" }; // Back to main menu
+            }
             if (username.empty()) {
-                std::cout << "Username cannot be empty!\n";
+                printError("Username cannot be empty!");
             }
             else if (username.find(' ') != std::string::npos) {
-                std::cout << "Username cannot contain spaces!\n";
+                printError("Username cannot contain spaces!");
             }
             else break; // valid username
         }
 
         // Password input
-        std::cout << "Password: ";
-        std::getline(std::cin, password);
+        password = getCenteredInput("Password (or 'back' to cancel): ");
+        if (password == "back" || password == "Back" || password == "BACK") {
+            return { -1, "" }; // Back to main menu
+        }
         if (password.empty()) {
-            std::cout << "Password cannot be empty!\n";
+            printError("Password cannot be empty!");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+            std::cin.get();
             continue; // loop back to username/password input
         }
 
@@ -52,13 +64,19 @@ static std::tuple<int, std::string> loginWithRole(int expectedRole, const std::s
             if (res->next()) {
                 int role = res->getInt("role");
                 if (role != expectedRole) {
-                    std::cout << "Login failed! This account does not have " << roleName << " access.\n";
+                    printError("Login failed! This account does not have " + roleName + " access.");
+                    std::cout << "\nPress Enter to continue...";
+                    std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+                    std::cin.get();
                     return { -1, "" };
                 }
                 return { role, username };
             }
             else {
-                std::cout << "Login failed! Invalid username or password.\n";
+                printError("Login failed! Invalid username or password.");
+                std::cout << "\nPress Enter to continue...";
+                std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+                std::cin.get();
             }
         }
         catch (sql::SQLException& e) {

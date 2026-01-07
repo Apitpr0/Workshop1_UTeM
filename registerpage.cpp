@@ -9,7 +9,8 @@
 #include <mysql_connection.h>
 #include <cppconn/prepared_statement.h>
 #include <cppconn/resultset.h>
-#include "hash.h" 
+#include "hash.h"
+#include "utils.h" // untuk validation functions dan UI functions
 
 using namespace std;
 
@@ -17,83 +18,61 @@ using namespace std;
 const string ADMIN_ENROLLMENT_PASSWORD = "admin123";
 const string RUNNER_ENROLLMENT_PASSWORD = "runner123";
 
-// ===== Validation functions =====
-bool isValidEmail(const string& email) {
-    const regex pattern(R"(^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$)");
-    return regex_match(email, pattern);
-}
-
-bool isValidName(const std::string& u) {
-    const std::regex pattern(R"(^[A-Za-z0-9]{2,50}$)"); // 2-50 chars, letters & numbers
-    return regex_match(u, pattern);
-}
-
-
-bool isValidPassword(const string& pw) {
-    if (pw.length() < 8) return false;
-    if (!regex_search(pw, regex("[A-Z]"))) return false; // Uppercase
-    if (!regex_search(pw, regex("[a-z]"))) return false; // Lowercase
-    if (!regex_search(pw, regex("[0-9]"))) return false; // Digit
-    if (!regex_search(pw, regex(R"([\W_])"))) return false; // Symbol
-    vector<string> blacklist = { "password","12345678","qwerty","admin" };
-    for (auto& s : blacklist) if (pw == s) return false;
-    return true;
-}
-
-// ===== International phone validation =====
-bool isValidPhoneIntl(const std::string& phone) {
-    if (phone.empty()) return false;
-    if (phone[0] == '+') {
-        for (size_t i = 1; i < phone.size(); ++i)
-            if (!isdigit(phone[i])) return false;
-    }
-    else {
-        for (char c : phone) if (!isdigit(c)) return false;
-    }
-    size_t digitsCount = (phone[0] == '+') ? phone.size() - 1 : phone.size();
-    return digitsCount >= 7 && digitsCount <= 15;
-}
-
-// Normalize phone for duplicate check
-std::string normalizePhone(const std::string& input) {
-    std::string num;
-    for (char c : input) if (isdigit(c)) num += c;
-    return num;
-}
-
 // ===== Registration function =====
 bool registerUser() {
     string username, password, email, contactNumber;
     int role = 0; // 0=user, 1=admin, 2=runner
 
-    cout << "\n=== Register Page ===\n";
-    cout << "Register as:\n1. User\n2. Admin\n3. Runner\nEnter choice: ";
+    clearScreen();
+    printMenuTitle("Register Page");
+    printHeader("REGISTER AS");
+    centerText("1. User");
+    centerText("2. Admin");
+    centerText("3. Runner");
+    centerText("0. Back to main menu");
+    printHeader("");
+    std::cout << "\n";
+    centerText("Enter choice: ");
     int choice;
     cin >> choice;
     cin.ignore(numeric_limits<streamsize>::max(), '\n');
 
+    if (choice == 0) {
+        printInfo("Registration cancelled.");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+        return false;
+    }
+
     if (choice == 2) {
         string enrollmentPassword;
-        cout << "Enter admin enrollment password: ";
-        getline(cin, enrollmentPassword);
+        enrollmentPassword = getCenteredInput("Enter admin enrollment password (or 'back' to cancel): ");
+        if (enrollmentPassword == "back" || enrollmentPassword == "Back" || enrollmentPassword == "BACK") {
+            centerText("Registration cancelled.");
+            return false;
+        }
         if (enrollmentPassword != ADMIN_ENROLLMENT_PASSWORD) {
-            cout << "Invalid enrollment password. Registration aborted.\n";
+            centerText("Invalid enrollment password. Registration aborted.");
             return false;
         }
         role = 1;
     }
     else if (choice == 3) {
         string enrollmentPassword;
-        cout << "Enter runner enrollment password: ";
-        getline(cin, enrollmentPassword);
+        enrollmentPassword = getCenteredInput("Enter runner enrollment password (or 'back' to cancel): ");
+        if (enrollmentPassword == "back" || enrollmentPassword == "Back" || enrollmentPassword == "BACK") {
+            centerText("Registration cancelled.");
+            return false;
+        }
         if (enrollmentPassword != RUNNER_ENROLLMENT_PASSWORD) {
-            cout << "Invalid enrollment password. Registration aborted.\n";
+            centerText("Invalid enrollment password. Registration aborted.");
             return false;
         }
         role = 2;
     }
     else if (choice != 1) {
-        cout << "Invalid choice. Registration aborted.\n";
+        centerText("Invalid choice. Registration aborted.");
         return false;
     }
 
@@ -104,11 +83,15 @@ bool registerUser() {
         con->setSchema("erms");
 
         while (true) {
-            cout << "Enter username (2-50 chars, letters & numbers, no spaces): ";
-            getline(cin, username);
+            username = getCenteredInput("Enter username (2-50 chars, letters & numbers, no spaces) or 'back' to cancel: ");
+
+            if (username == "back" || username == "Back" || username == "BACK") {
+                centerText("Registration cancelled.");
+                return false;
+            }
 
             if (!isValidName(username)) {
-                cout << "Invalid username! Re-enter.\n";
+                centerText("Invalid username! Re-enter.");
                 continue;
             }
 
@@ -120,7 +103,7 @@ bool registerUser() {
             unique_ptr<sql::ResultSet> resUser(checkUserStmt->executeQuery());
             resUser->next();
             if (resUser->getInt("count") > 0) {
-                cout << "Username already taken! Please enter another.\n";
+                centerText("Username already taken! Please enter another.");
                 continue;
             }
 
@@ -128,28 +111,46 @@ bool registerUser() {
         }
 
         // ===== Password =====
-        cout << "Enter password (8+ chars, uppercase, lowercase, number and symbol): ";
-        getline(cin, password);
+        password = getCenteredInput("Enter password (8+ chars, uppercase, lowercase, number and symbol) or 'back' to cancel: ");
+        if (password == "back" || password == "Back" || password == "BACK") {
+            centerText("Registration cancelled.");
+            return false;
+        }
         while (!isValidPassword(password)) {
-            cout << "Password must be 8+ chars, include uppercase, lowercase, number, and symbol. Re-enter: ";
-            getline(cin, password);
+            centerText("Password must be 8+ chars, include uppercase, lowercase, number, and symbol. Re-enter (or 'back' to cancel).");
+            password = getCenteredInput("Enter password (or 'back' to cancel): ");
+            if (password == "back" || password == "Back" || password == "BACK") {
+                centerText("Registration cancelled.");
+                return false;
+            }
         }
 
         string confirmPassword;
-        cout << "Confirm password: ";
-        getline(cin, confirmPassword);
+        confirmPassword = getCenteredInput("Confirm password (or 'back' to cancel): ");
+        if (confirmPassword == "back" || confirmPassword == "Back" || confirmPassword == "BACK") {
+            centerText("Registration cancelled.");
+            return false;
+        }
         while (confirmPassword != password) {
-            cout << "Passwords do not match! Re-enter confirmation: ";
-            getline(cin, confirmPassword);
+            centerText("Passwords do not match! Re-enter confirmation (or 'back' to cancel).");
+            confirmPassword = getCenteredInput("Confirm password (or 'back' to cancel): ");
+            if (confirmPassword == "back" || confirmPassword == "Back" || confirmPassword == "BACK") {
+                centerText("Registration cancelled.");
+                return false;
+            }
         }
 
         // ===== Email =====
         while (true) {
-            cout << "Enter email: ";
-            getline(cin, email);
+            email = getCenteredInput("Enter email (or 'back' to cancel): ");
+
+            if (email == "back" || email == "Back" || email == "BACK") {
+                centerText("Registration cancelled.");
+                return false;
+            }
 
             if (!isValidEmail(email)) {
-                cout << "Invalid email format. Re-enter.\n";
+                centerText("Invalid email format. Re-enter.");
                 continue;
             }
 
@@ -161,7 +162,7 @@ bool registerUser() {
             unique_ptr<sql::ResultSet> resEmail(checkEmailStmt->executeQuery());
             resEmail->next();
             if (resEmail->getInt("count") > 0) {
-                cout << "Email already registered! Enter another email.\n";
+                centerText("Email already registered! Enter another email.");
                 continue;
             }
 
@@ -171,10 +172,15 @@ bool registerUser() {
 
         // ===== Contact Number =====
         while (true) {
-            cout << "Enter contact number (with optional +countrycode): ";
-            getline(cin, contactNumber);
+            contactNumber = getCenteredInput("Enter contact number (with optional +countrycode, or 'back' to cancel): ");
+            
+            if (contactNumber == "back" || contactNumber == "Back" || contactNumber == "BACK") {
+                centerText("Registration cancelled.");
+                return false;
+            }
+            
             if (!isValidPhoneIntl(contactNumber)) {
-                cout << "Invalid phone! Must be 7-15 digits, can start with +. Re-enter.\n";
+                centerText("Invalid phone! Must be 7-15 digits, can start with +. Re-enter.");
                 continue;
             }
 
@@ -191,7 +197,7 @@ bool registerUser() {
             }
 
             if (duplicate) {
-                cout << "This contact number is already registered! Enter another number.\n";
+                centerText("This contact number is already registered! Enter another number.");
                 continue;
             }
 
@@ -211,11 +217,17 @@ bool registerUser() {
         pstmt->setInt(5, role);
         pstmt->execute();
 
-        cout << "Registration successful!\n";
+        printSuccess("Registration successful!");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
         return true;
     }
     catch (sql::SQLException& e) {
-        cerr << "Database error: " << e.what() << endl;
+        printError("Database error: " + string(e.what()));
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
         return false;
     }
 }

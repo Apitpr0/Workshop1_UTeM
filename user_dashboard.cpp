@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <string>
 #include <memory>
 #include <cppconn/prepared_statement.h>
@@ -9,9 +9,8 @@
 #include <cstdlib>
 #include <ctime>
 #include <iomanip>  // for formatting
-
-// Forward declaration of getMenuChoice from dashboard.cpp
-extern int getMenuChoice(int min, int max);
+#include <sstream>
+#include "utils.h"  // untuk getMenuChoice dan UI functions
 
 // ===== Get user ID from username =====
 int getUserId(const std::string& username) {
@@ -74,18 +73,30 @@ void viewMyErrands(const std::string& username) {
     int userId = getUserId(username);
     if (userId == -1) { std::cout << "User not found!\n"; return; }
 
+    clearScreen();
+    printMenuTitle("View My Errands");
+    printHeader("FILTER ERRANDS BY STATUS");
+    centerText("1. All");
+    centerText("2. Pending");
+    centerText("3. Assigned");
+    centerText("4. Completed");
+    centerText("0. Back");
+    printHeader("");
+    std::cout << "\n";
+    centerText("Enter choice: ");
+    
     int filterChoice = 0;
     while (true) {
-        std::cout << "\nFilter errands by status:\n";
-        std::cout << "1. All\n2. Pending\n3. Assigned\n4. Completed\nEnter choice: ";
-        if (std::cin >> filterChoice && filterChoice >= 1 && filterChoice <= 4) {
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        filterChoice = getCenteredIntInput("Enter filter choice (0-4): ");
+        if (filterChoice >= 0 && filterChoice <= 4) {
+            if (filterChoice == 0) return; // Back to menu
             break;
         }
         else {
             std::cin.clear();
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            std::cout << "Invalid choice! Enter a number between 1 and 4.\n";
+            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+            printError("Invalid choice! Enter a number between 0 and 4.");
+            centerText("Enter choice: ");
         }
     }
 
@@ -120,24 +131,54 @@ void viewMyErrands(const std::string& username) {
         pstmt->setInt(1, userId);
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
-        std::cout << "\n--- Your Errands ---\n";
+        
+        clearScreen();
+        printMenuTitle("Your Errands");
+        
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Description", 25},
+            {"Pickup", 15},
+            {"Dropoff", 15},
+            {"Distance", 10},
+            {"Status", 12},
+            {"Runner", 15},
+            {"Created", 20}
+        };
+        std::vector<int> widths = {5, 25, 15, 15, 10, 12, 15, 20};
+        
+        printTableHeader(columns);
+        
         bool hasErrands = false;
         while (res->next()) {
             hasErrands = true;
-            std::cout << "ID: " << res->getInt("errand_id")
-                << " | Desc: " << res->getString("description")
-                << " | Pickup: " << res->getString("pickup_loc")
-                << " | Dropoff: " << res->getString("dropoff_loc")
-                << " | Distance: " << std::fixed << std::setprecision(2) << res->getDouble("distance") << " km"
-                << " | Status: " << res->getString("status");
+            std::string runnerName = "N/A";
             if (res->getString("status") == "Assigned") {
-                std::string runnerName = res->getString("runner_name");
+                runnerName = res->getString("runner_name");
                 if (runnerName.empty()) runnerName = "N/A";
-                std::cout << " | Runner: " << runnerName;
             }
-            std::cout << " | Created: " << res->getString("created_at") << "\n";
+            std::ostringstream distStream;
+            distStream << std::fixed << std::setprecision(2) << res->getDouble("distance");
+            
+            std::vector<std::string> row = {
+                std::to_string(res->getInt("errand_id")),
+                truncateString(res->getString("description"), 25),
+                truncateString(res->getString("pickup_loc"), 15),
+                truncateString(res->getString("dropoff_loc"), 15),
+                distStream.str() + " km",
+                truncateString(res->getString("status"), 12),
+                truncateString(runnerName, 15),
+                truncateString(res->getString("created_at"), 20)
+            };
+            printTableRow(row, widths);
         }
-        if (!hasErrands) std::cout << "No errands found!\n";
+        if (!hasErrands) {
+            centerText("No errands found!");
+        }
+        
+        printTableFooter(widths);
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
@@ -171,30 +212,41 @@ void viewQuotation(const std::string& username) {
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
 
-        bool hasPending = false;
-        std::cout << "\n=== PENDING QUOTATIONS ===\n";
+        clearScreen();
+        printMenuTitle("Pending Quotations");
 
+        bool hasPending = false;
         while (res->next()) {
             hasPending = true;
-            std::cout << "--------------------------------------------\n";
-            std::cout << "Quotation ID   : " << res->getInt("quote_id") << "\n";
-            std::cout << "Errand ID      : " << res->getInt("errand_id") << "\n";
-            std::cout << "Base Price/km  : RM " << std::fixed << std::setprecision(2)
-                << res->getDouble("base_price_per_km") << "\n";
-            std::cout << "Distance       : " << res->getDouble("distance_km") << " km\n";
-            std::cout << "Runner %       : " << res->getDouble("runner_percentage") << "%\n";
-            std::cout << "System %       : " << res->getDouble("system_percentage") << "%\n";
-            std::cout << "Runner Fee     : RM " << res->getDouble("runner_share") << "\n";
-            std::cout << "System Fee     : RM " << res->getDouble("system_fee") << "\n";
-            std::cout << "Status         : " << res->getString("status") << "\n";
-            std::cout << "--------------------------------------------\n\n";
+            std::ostringstream baseStream, runnerFeeStream, systemFeeStream;
+            baseStream << std::fixed << std::setprecision(2) << res->getDouble("base_price_per_km");
+            runnerFeeStream << std::fixed << std::setprecision(2) << res->getDouble("runner_share");
+            systemFeeStream << std::fixed << std::setprecision(2) << res->getDouble("system_fee");
+            
+            centerText("+------------------------------------------+");
+            centerText("|        QUOTATION INFORMATION              |");
+            centerText("+------------------------------------------+");
+            centerText("| Quotation ID   : " + std::to_string(res->getInt("quote_id")) + std::string(20, ' ') + "|");
+            centerText("| Errand ID      : " + std::to_string(res->getInt("errand_id")) + std::string(20, ' ') + "|");
+            centerText("| Base Price/km  : RM " + baseStream.str() + std::string(15, ' ') + "|");
+            centerText("| Distance       : " + std::to_string(static_cast<int>(res->getDouble("distance_km"))) + " km" + std::string(18, ' ') + "|");
+            centerText("| Runner %       : " + std::to_string(static_cast<int>(res->getDouble("runner_percentage"))) + "%" + std::string(19, ' ') + "|");
+            centerText("| System %       : " + std::to_string(static_cast<int>(res->getDouble("system_percentage"))) + "%" + std::string(19, ' ') + "|");
+            centerText("| Runner Fee     : RM " + runnerFeeStream.str() + std::string(15, ' ') + "|");
+            centerText("| System Fee     : RM " + systemFeeStream.str() + std::string(15, ' ') + "|");
+            centerText("| Status         : " + res->getString("status") + std::string(20, ' ') + "|");
+            centerText("+------------------------------------------+");
+            std::cout << "\n";
         }
 
         if (!hasPending) {
-            std::cout << "All quotations have been paid.\n";
-            std::cout << "Returning to dashboard...\n";
-            return; // ⬅️ INI yang buat balik homescreen
+            printInfo("All quotations have been paid.");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
         }
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
 
     }
     catch (sql::SQLException& e) {
@@ -210,24 +262,50 @@ void makePayment(const std::string& username) {
         return;
     }
 
+    clearScreen();
+    printMenuTitle("Make Payment");
+    
     int quoteId;
-    std::cout << "Enter Quotation ID to pay: ";
-    std::cin >> quoteId;
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    quoteId = getCenteredIntInput("Enter Quotation ID to pay (or 0 to go back): ");
+    if (quoteId == 0) return; // Back to menu
 
+    clearScreen();
+    printMenuTitle("Payment Method: Credit / Debit Card");
+    printInfo("Type 'back' at any time to cancel");
+    std::cout << "\n";
+    
     std::string cardNumber, expiryDate, cvv;
-    std::cout << "\n--- Payment Method: Credit / Debit Card ---\n";
-    std::cout << "Card Number (16 digits): ";
-    std::getline(std::cin, cardNumber);
+    cardNumber = getCenteredInput("Card Number (16 digits, or 'back' to cancel): ");
+    if (cardNumber == "back" || cardNumber == "Back" || cardNumber == "BACK") {
+        printInfo("Payment cancelled.");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+        return;
+    }
 
-    std::cout << "Expiry Date (MM/YY): ";
-    std::getline(std::cin, expiryDate);
+    expiryDate = getCenteredInput("Expiry Date (MM/YY, or 'back' to cancel): ");
+    if (expiryDate == "back" || expiryDate == "Back" || expiryDate == "BACK") {
+        printInfo("Payment cancelled.");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+        return;
+    }
 
-    std::cout << "CVV (3 digits): ";
-    std::getline(std::cin, cvv);
+    cvv = getCenteredInput("CVV (3 digits, or 'back' to cancel): ");
+    if (cvv == "back" || cvv == "Back" || cvv == "BACK") {
+        printInfo("Payment cancelled.");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+        return;
+    }
 
     if (cardNumber.length() < 12 || cvv.length() < 3) {
-        std::cout << "Invalid card details!\n";
+        printError("Invalid card details!");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
         return;
     }
 
@@ -248,7 +326,9 @@ void makePayment(const std::string& username) {
 
         std::unique_ptr<sql::ResultSet> qRes(qStmt->executeQuery());
         if (!qRes->next()) {
-            std::cout << "Quotation not found or already paid!\n";
+            printError("Quotation not found or already paid!");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
             return;
         }
 
@@ -297,23 +377,34 @@ void makePayment(const std::string& username) {
         uStmt->executeUpdate();
 
         // ================= RECEIPT =================
-        std::cout << "\n=====================================\n";
-        std::cout << "          ERMS PAYMENT RECEIPT        \n";
-        std::cout << "=====================================\n";
-        std::cout << "Transaction ID : " << transactionId << "\n";
-        std::cout << "Quotation ID   : " << quoteId << "\n";
-        std::cout << "Errand ID      : " << errandId << "\n";
-        std::cout << "-------------------------------------\n";
-        std::cout << "Base Price/km  : RM " << std::fixed << std::setprecision(2) << base << "\n";
-        std::cout << "Distance       : " << distance << " km\n";
-        std::cout << "-------------------------------------\n";
-        std::cout << "Total Paid     : RM " << total << "\n";
-        std::cout << "Runner (" << runnerPerc << "%)   : RM " << runnerFee << "\n";
-        std::cout << "System (" << systemPerc << "%)   : RM " << systemFee << "\n";
-        std::cout << "-------------------------------------\n";
-        std::cout << "Payment Status : " << payStatus << "\n";
-        std::cout << "Method         : Credit / Debit Card\n";
-        std::cout << "=====================================\n";
+        clearScreen();
+        printMenuTitle("Payment Successful!");
+        
+        std::ostringstream baseStream, totalStream, runnerFeeStream, systemFeeStream;
+        baseStream << std::fixed << std::setprecision(2) << base;
+        totalStream << std::fixed << std::setprecision(2) << total;
+        runnerFeeStream << std::fixed << std::setprecision(2) << runnerFee;
+        systemFeeStream << std::fixed << std::setprecision(2) << systemFee;
+        
+        centerText("==========================================");
+        centerText("       ERMS PAYMENT RECEIPT              ");
+        centerText("==========================================");
+        centerText("Transaction ID : " + transactionId);
+        centerText("Quotation ID   : " + std::to_string(quoteId));
+        centerText("Errand ID      : " + std::to_string(errandId));
+        centerText("------------------------------------------");
+        centerText("Base Price/km  : RM " + baseStream.str());
+        centerText("Distance       : " + std::to_string(static_cast<int>(distance)) + " km");
+        centerText("------------------------------------------");
+        centerText("Total Paid     : RM " + totalStream.str());
+        centerText("Runner (" + std::to_string(static_cast<int>(runnerPerc)) + "%)   : RM " + runnerFeeStream.str());
+        centerText("System (" + std::to_string(static_cast<int>(systemPerc)) + "%)   : RM " + systemFeeStream.str());
+        centerText("------------------------------------------");
+        centerText("Payment Status : " + payStatus);
+        centerText("Method         : Credit / Debit Card");
+        centerText("==========================================");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
 
     }
     catch (sql::SQLException& e) {
@@ -328,18 +419,30 @@ void createNewErrand(const std::string& username) {
 
     std::string desc, pickup, dropoff;
     do {
-        std::cout << "Enter errand description: "; std::getline(std::cin, desc);
-        if (desc.empty()) std::cout << "Description cannot be empty!\n";
+        desc = getCenteredInput("Enter errand description (or 'back' to cancel): ");
+        if (desc == "back" || desc == "Back" || desc == "BACK") {
+            centerText("Errand creation cancelled.");
+            return;
+        }
+        if (desc.empty()) centerText("Description cannot be empty!");
     } while (desc.empty());
 
     do {
-        std::cout << "Enter pickup location: "; std::getline(std::cin, pickup);
-        if (pickup.empty()) std::cout << "Pickup location cannot be empty!\n";
+        pickup = getCenteredInput("Enter pickup location (or 'back' to cancel): ");
+        if (pickup == "back" || pickup == "Back" || pickup == "BACK") {
+            centerText("Errand creation cancelled.");
+            return;
+        }
+        if (pickup.empty()) centerText("Pickup location cannot be empty!");
     } while (pickup.empty());
 
     do {
-        std::cout << "Enter dropoff location: "; std::getline(std::cin, dropoff);
-        if (dropoff.empty()) std::cout << "Dropoff location cannot be empty!\n";
+        dropoff = getCenteredInput("Enter dropoff location (or 'back' to cancel): ");
+        if (dropoff == "back" || dropoff == "Back" || dropoff == "BACK") {
+            centerText("Errand creation cancelled.");
+            return;
+        }
+        if (dropoff.empty()) centerText("Dropoff location cannot be empty!");
     } while (dropoff.empty());
 
     std::srand(static_cast<unsigned>(std::time(nullptr)));
@@ -375,22 +478,30 @@ void createNewErrand(const std::string& username) {
             createQuotation(lastErrandId, distance);
         }
 
-        std::cout << "New errand added successfully! Distance: "
-            << std::fixed << std::setprecision(2) << distance << " km\n";
+        std::ostringstream distStream;
+        distStream << std::fixed << std::setprecision(2) << distance;
+        printSuccess("New errand added successfully! Distance: " + distStream.str() + " km");
 
         // Post-create option
+        std::cout << "\n";
+        printHeader("WHAT WOULD YOU LIKE TO DO?");
+        centerText("1. View quotations");
+        centerText("2. Back to dashboard");
+        printHeader("");
+        std::cout << "\n";
+        centerText("Enter choice: ");
+        
         int postChoice = 0;
         while (true) {
-            std::cout << "\nWhat would you like to do next?\n";
-            std::cout << "1. View quotations\n2. Back to dashboard\nEnter choice: ";
             if (std::cin >> postChoice && (postChoice == 1 || postChoice == 2)) {
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
                 break;
             }
             else {
                 std::cin.clear();
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                std::cout << "Invalid choice! Enter 1 or 2.\n";
+                std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+                printError("Invalid choice! Enter 1 or 2.");
+                centerText("Enter choice: ");
             }
         }
         if (postChoice == 1) viewQuotation(username);
@@ -419,31 +530,66 @@ void updateErrandStatus(const std::string& username) {
         pstmt->setInt(1, userId);
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+        
+        clearScreen();
+        printMenuTitle("Mark Errand as Completed");
+        
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Description", 50},
+            {"Status", 12}
+        };
+        std::vector<int> widths = {5, 50, 12};
+        
+        printTableHeader(columns);
+        
         bool hasErrands = false;
-        std::cout << "\n--- Pending/Assigned Errands ---\n";
         while (res->next()) {
             hasErrands = true;
-            std::cout << "ID: " << res->getInt("errand_id")
-                << " | Desc: " << res->getString("description")
-                << " | Status: " << res->getString("status") << "\n";
+            std::vector<std::string> row = {
+                std::to_string(res->getInt("errand_id")),
+                truncateString(res->getString("description"), 50),
+                truncateString(res->getString("status"), 12)
+            };
+            printTableRow(row, widths);
         }
-        if (!hasErrands) { std::cout << "No pending or assigned errands.\n"; return; }
+        if (!hasErrands) {
+            centerText("No pending or assigned errands.");
+            printTableFooter(widths);
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        printTableFooter(widths);
 
         int errandId;
         while (true) {
-            std::cout << "Enter the ID of the errand to mark as COMPLETED: ";
-            if (std::cin >> errandId) { std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); break; }
-            else { std::cin.clear(); std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); std::cout << "Invalid input!\n"; }
+            centerText("Enter the ID of the errand to mark as COMPLETED (or 0 to go back): ");
+            if (std::cin >> errandId) {
+                std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+                if (errandId == 0) return; // Back to menu
+                break;
+            }
+            else {
+                std::cin.clear();
+                std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+                printError("Invalid input! Enter a valid ID or 0 to go back.");
+            }
         }
 
         char confirm;
         while (true) {
-            std::cout << "Are you sure you want to mark this errand as COMPLETED? (Y/N): ";
-            std::cin >> confirm; std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            centerText("Are you sure you want to mark this errand as COMPLETED? (Y/N): ");
+            std::cin >> confirm; std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
             if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
-            else std::cout << "Invalid input! Enter Y or N.\n";
+            else printError("Invalid input! Enter Y or N.");
         }
-        if (confirm == 'N' || confirm == 'n') { std::cout << "Operation canceled.\n"; return; }
+        if (confirm == 'N' || confirm == 'n') {
+            printInfo("Operation canceled.");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
 
         std::unique_ptr<sql::PreparedStatement> updateStmt(
             con->prepareStatement("UPDATE errands SET status='Completed' WHERE requester_id=? AND errand_id=?")
@@ -452,8 +598,14 @@ void updateErrandStatus(const std::string& username) {
         updateStmt->setInt(2, errandId);
 
         int updated = updateStmt->executeUpdate();
-        if (updated > 0) std::cout << "Errand marked as COMPLETED successfully!\n";
-        else std::cout << "Errand not found, not pending/assigned, or not linked to you!\n";
+        if (updated > 0) {
+            printSuccess("Errand marked as COMPLETED successfully!");
+        }
+        else {
+            printError("Errand not found or cannot be marked as completed!");
+        }
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
 
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
@@ -475,30 +627,65 @@ void cancelPendingErrand(const std::string& username) {
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
         bool hasPending = false;
-        std::cout << "\n--- Pending Errands ---\n";
+        
+        clearScreen();
+        printMenuTitle("Cancel Pending Errands");
+        
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Description", 50}
+        };
+        std::vector<int> widths = {5, 50};
+        
+        printTableHeader(columns);
+        
         while (res->next()) {
             hasPending = true;
-            std::cout << "ID: " << res->getInt("errand_id") << " | Desc: " << res->getString("description") << "\n";
+            std::vector<std::string> row = {
+                std::to_string(res->getInt("errand_id")),
+                truncateString(res->getString("description"), 50)
+            };
+            printTableRow(row, widths);
         }
-        if (!hasPending) { std::cout << "No pending errands.\n"; return; }
+        if (!hasPending) {
+            centerText("No pending errands.");
+            printTableFooter(widths);
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        printTableFooter(widths);
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; return; }
 
     int errandId;
     while (true) {
-        std::cout << "Enter the ID of the errand to cancel: ";
-        if (std::cin >> errandId) { std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); break; }
-        else { std::cin.clear(); std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); std::cout << "Invalid input!\n"; }
+        centerText("Enter the ID of the errand to cancel (or 0 to go back): ");
+        if (std::cin >> errandId) {
+            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+            if (errandId == 0) return; // Back to menu
+            break;
+        }
+        else {
+            std::cin.clear();
+            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+            printError("Invalid input! Enter a valid ID or 0 to go back.");
+        }
     }
 
     char confirm;
     while (true) {
-        std::cout << "Are you sure you want to CANCEL this errand? (Y/N): ";
-        std::cin >> confirm; std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        centerText("Are you sure you want to CANCEL this errand? (Y/N): ");
+        std::cin >> confirm; std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
         if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
-        else std::cout << "Invalid input! Enter Y or N.\n";
+        else printError("Invalid input! Enter Y or N.");
     }
-    if (confirm == 'N' || confirm == 'n') { std::cout << "Operation canceled.\n"; return; }
+    if (confirm == 'N' || confirm == 'n') {
+        printInfo("Operation canceled.");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+        return;
+    }
 
     try {
         sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
@@ -512,8 +699,14 @@ void cancelPendingErrand(const std::string& username) {
         pstmt->setInt(2, errandId);
 
         int deleted = pstmt->executeUpdate();
-        if (deleted > 0) std::cout << "Errand canceled successfully!\n";
-        else std::cout << "Errand not found, not pending, or not linked to you!\n";
+        if (deleted > 0) {
+            printSuccess("Errand canceled successfully!");
+        }
+        else {
+            printError("Errand not found, not pending, or not linked to you!");
+        }
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
@@ -541,11 +734,19 @@ void viewSummaryStats(const std::string& username) {
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
         if (res->next()) {
-            std::cout << "\n--- Errand Summary ---\n";
-            std::cout << "Total: " << res->getInt("total")
-                << " | Pending: " << res->getInt("pending")
-                << " | Assigned: " << res->getInt("assigned")
-                << " | Completed: " << res->getInt("completed") << "\n";
+            clearScreen();
+            printMenuTitle("Errand Summary Statistics");
+            
+            centerText("+------------------------------------------+");
+            centerText("|        YOUR ERRAND STATISTICS           |");
+            centerText("+------------------------------------------+");
+            centerText("| Total Errands    : " + std::to_string(res->getInt("total")) + std::string(20, ' ') + "|");
+            centerText("| Pending          : " + std::to_string(res->getInt("pending")) + std::string(20, ' ') + "|");
+            centerText("| Assigned         : " + std::to_string(res->getInt("assigned")) + std::string(20, ' ') + "|");
+            centerText("| Completed        : " + std::to_string(res->getInt("completed")) + std::string(20, ' ') + "|");
+            centerText("+------------------------------------------+");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
         }
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
@@ -554,15 +755,20 @@ void viewSummaryStats(const std::string& username) {
 // ===== Full user menu =====
 void user_menu(const std::string& username) {
     while (true) {
-        std::cout << "\n=== User Dashboard ===\n";
-        std::cout << "1. View my errands (with filter)\n";
-        std::cout << "2. Create new errand\n";
-        std::cout << "3. Mark an errand as completed\n";
-        std::cout << "4. Cancel pending errand\n";
-        std::cout << "5. View summary stats\n";
-        std::cout << "6. View quotations\n";
-        std::cout << "7. Make payment\n";
-        std::cout << "0. Logout\nEnter choice: ";
+        clearScreen();
+        printMenuTitle("User Dashboard - Welcome " + username);
+        printHeader("USER MENU");
+        centerText("1. View my errands (with filter)");
+        centerText("2. Create new errand");
+        centerText("3. Mark an errand as completed");
+        centerText("4. Cancel pending errand");
+        centerText("5. View summary stats");
+        centerText("6. View quotations");
+        centerText("7. Make payment");
+        centerText("0. Logout");
+        printHeader("");
+        std::cout << "\n";
+        centerText("Enter choice: ");
         int choice = getMenuChoice(0, 7);
 
         switch (choice) {

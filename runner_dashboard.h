@@ -6,7 +6,4 @@
 // Full Runner menu function
 void runner_menu(const std::string& username);
 
-// Other helper functions (optional)
-int getMenuChoice(int min, int max);
-
 #endif // RUNNER_DASHBOARD_H

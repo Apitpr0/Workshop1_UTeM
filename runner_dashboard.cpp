@@ -9,9 +9,8 @@
 #include <iomanip>
 #include <cstdlib>
 #include <ctime>
-
-// Forward declaration of getMenuChoice from dashboard.cpp
-extern int getMenuChoice(int min, int max);
+#include <sstream>
+#include "utils.h"  // untuk getMenuChoice dan UI functions
 
 // ===== Get runner ID from username =====
 int getRunnerId(const std::string& username) {
@@ -55,9 +54,23 @@ void viewAvailableErrands() {
         );
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
-        std::cout << "\n--- Available Errands ---\n";
+        
+        clearScreen();
+        printMenuTitle("Available Errands");
+        
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Description", 25},
+            {"Pickup", 15},
+            {"Dropoff", 15},
+            {"Distance", 10},
+            {"Runner Earn", 12}
+        };
+        std::vector<int> widths = {5, 25, 15, 15, 10, 12};
+        
+        printTableHeader(columns);
+        
         bool hasErrands = false;
-
         while (res->next()) {
             hasErrands = true;
             int errandId = res->getInt("errand_id");
@@ -67,27 +80,37 @@ void viewAvailableErrands() {
             double distance = res->getDouble("distance");
 
             double runnerShare = 0.0;
-
-            // Jika runner_share ada, pakai terus
             if (!res->isNull("runner_share")) {
                 runnerShare = res->getDouble("runner_share");
             }
             else {
-                // Fallback kira manually kalau quotation tak ada
                 double basePricePerKm = !res->isNull("base_price_per_km") ? res->getDouble("base_price_per_km") : 3.0;
                 double runnerPercentage = !res->isNull("runner_percentage") ? res->getDouble("runner_percentage") : 70.0;
                 runnerShare = distance * basePricePerKm * (runnerPercentage / 100.0);
             }
 
-            std::cout << "ID: " << errandId
-                << " | Desc: " << desc
-                << " | Pickup: " << pickup
-                << " | Dropoff: " << dropoff
-                << " | Distance: " << std::fixed << std::setprecision(2) << distance << " km"
-                << " | Runner Earn: RM " << std::fixed << std::setprecision(2) << runnerShare << "\n";
+            std::ostringstream distStream, earnStream;
+            distStream << std::fixed << std::setprecision(2) << distance;
+            earnStream << std::fixed << std::setprecision(2) << runnerShare;
+            
+            std::vector<std::string> row = {
+                std::to_string(errandId),
+                truncateString(desc, 25),
+                truncateString(pickup, 15),
+                truncateString(dropoff, 15),
+                distStream.str() + " km",
+                "RM " + earnStream.str()
+            };
+            printTableRow(row, widths);
         }
 
-        if (!hasErrands) std::cout << "No available errands at the moment.\n";
+        if (!hasErrands) {
+            centerText("No available errands at the moment.");
+        }
+        
+        printTableFooter(widths);
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
     }
     catch (sql::SQLException& e) {
         std::cerr << "Database error: " << e.what() << std::endl;
@@ -114,19 +137,45 @@ void viewAssignedErrands(const std::string& username) {
         pstmt->setInt(1, runnerId);
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
-        std::cout << "\n--- My Assigned Errands ---\n";
+        
+        clearScreen();
+        printMenuTitle("My Assigned Errands");
+        
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Description", 25},
+            {"Pickup", 15},
+            {"Dropoff", 15},
+            {"Distance", 10},
+            {"Status", 12}
+        };
+        std::vector<int> widths = {5, 25, 15, 15, 10, 12};
+        
+        printTableHeader(columns);
+        
         bool hasErrands = false;
         while (res->next()) {
             hasErrands = true;
-            std::cout << "ID: " << res->getInt("errand_id")
-                << " | Desc: " << res->getString("description")
-                << " | Pickup: " << res->getString("pickup_loc")
-                << " | Dropoff: " << res->getString("dropoff_loc")
-                << " | Distance: " << std::fixed << std::setprecision(2)
-                << res->getDouble("distance")
-                << " km | Status: " << res->getString("status") << "\n";
+            std::ostringstream distStream;
+            distStream << std::fixed << std::setprecision(2) << res->getDouble("distance");
+            
+            std::vector<std::string> row = {
+                std::to_string(res->getInt("errand_id")),
+                truncateString(res->getString("description"), 25),
+                truncateString(res->getString("pickup_loc"), 15),
+                truncateString(res->getString("dropoff_loc"), 15),
+                distStream.str() + " km",
+                truncateString(res->getString("status"), 12)
+            };
+            printTableRow(row, widths);
         }
-        if (!hasErrands) std::cout << "No errands assigned to you yet.\n";
+        if (!hasErrands) {
+            centerText("No errands assigned to you yet.");
+        }
+        
+        printTableFooter(widths);
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
 
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
@@ -155,9 +204,23 @@ void acceptErrand(const std::string& username) {
         );
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
-        std::cout << "\n--- Available Errands ---\n";
+        
+        clearScreen();
+        printMenuTitle("Available Errands - Accept");
+        
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Description", 25},
+            {"Pickup", 15},
+            {"Dropoff", 15},
+            {"Distance", 10},
+            {"Runner Earn", 12}
+        };
+        std::vector<int> widths = {5, 25, 15, 15, 10, 12};
+        
+        printTableHeader(columns);
+        
         bool hasErrands = false;
-
         // Simpan errand info dalam map untuk lookup nanti
         std::map<int, double> errandRunnerShare;
 
@@ -170,7 +233,6 @@ void acceptErrand(const std::string& username) {
             double distance = res->getDouble("distance");
 
             double runnerShare = 0.0;
-
             if (!res->isNull("runner_share")) {
                 runnerShare = res->getDouble("runner_share");
             }
@@ -181,40 +243,64 @@ void acceptErrand(const std::string& username) {
             }
 
             errandRunnerShare[errandId] = runnerShare;
-
-            std::cout << "ID: " << errandId
-                << " | Desc: " << desc
-                << " | Pickup: " << pickup
-                << " | Dropoff: " << dropoff
-                << " | Distance: " << std::fixed << std::setprecision(2) << distance << " km"
-                << " | Runner Earn: RM " << std::fixed << std::setprecision(2) << runnerShare << "\n";
+            
+            std::ostringstream distStream, earnStream;
+            distStream << std::fixed << std::setprecision(2) << distance;
+            earnStream << std::fixed << std::setprecision(2) << runnerShare;
+            
+            std::vector<std::string> row = {
+                std::to_string(errandId),
+                truncateString(desc, 25),
+                truncateString(pickup, 15),
+                truncateString(dropoff, 15),
+                distStream.str() + " km",
+                "RM " + earnStream.str()
+            };
+            printTableRow(row, widths);
         }
 
-        if (!hasErrands) { std::cout << "No available errands at the moment.\n"; return; }
+        if (!hasErrands) {
+            centerText("No available errands at the moment.");
+            printTableFooter(widths);
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        
+        printTableFooter(widths);
 
         int errandId;
         while (true) {
-            std::cout << "Enter the ID of the errand to accept: ";
-            if (std::cin >> errandId && errandRunnerShare.find(errandId) != errandRunnerShare.end()) {
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            errandId = getCenteredIntInput("Enter the ID of the errand to accept (or 0 to go back): ");
+            if (errandId == 0) return; // Back to menu
+            if (errandRunnerShare.find(errandId) != errandRunnerShare.end()) {
                 break;
             }
             else {
-                std::cin.clear(); std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                std::cout << "Invalid input! ID not found.\n";
+                printError("Invalid input! ID not found.");
             }
         }
 
-        std::cout << "You will earn RM " << std::fixed << std::setprecision(2) << errandRunnerShare[errandId] << " for this errand.\n";
+        std::ostringstream earnStream;
+        earnStream << std::fixed << std::setprecision(2) << errandRunnerShare[errandId];
+        centerText("You will earn RM " + earnStream.str() + " for this errand.");
+        std::cout << "\n";
 
         char confirm;
         while (true) {
-            std::cout << "Confirm acceptance of this errand? (Y/N): ";
-            std::cin >> confirm; std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-            if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
-            else std::cout << "Invalid input! Enter Y or N.\n";
+            std::string confirmInput = getCenteredInput("Confirm acceptance of this errand? (Y/N): ");
+            if (confirmInput.length() == 1) {
+                confirm = confirmInput[0];
+                if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
+            }
+            printError("Invalid input! Enter Y or N.");
         }
-        if (confirm == 'N' || confirm == 'n') { std::cout << "Operation canceled.\n"; return; }
+        if (confirm == 'N' || confirm == 'n') {
+            printInfo("Operation canceled.");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
 
         // Update errand status
         std::unique_ptr<sql::PreparedStatement> updateStmt(
@@ -227,8 +313,14 @@ void acceptErrand(const std::string& username) {
         updateStmt->setInt(2, errandId);
 
         int updated = updateStmt->executeUpdate();
-        if (updated > 0) std::cout << "Errand accepted successfully!\n";
-        else std::cout << "Errand not found or already assigned.\n";
+        if (updated > 0) {
+            printSuccess("Errand accepted successfully!");
+        }
+        else {
+            printError("Failed to accept errand!");
+        }
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
 
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
@@ -288,12 +380,23 @@ void viewRunnerStats(const std::string& username) {
             }
         }
 
-        std::cout << "\n--- Runner Summary ---\n";
-        std::cout << "Total errands: " << total
-            << " | Pending: " << pending
-            << " | Assigned: " << assigned
-            << " | Completed: " << completed << "\n";
-        std::cout << "Total earned (RM): " << std::fixed << std::setprecision(2) << totalEarned << "\n";
+        clearScreen();
+        printMenuTitle("Runner Summary Statistics");
+        
+        std::ostringstream earnStream;
+        earnStream << std::fixed << std::setprecision(2) << totalEarned;
+        
+        centerText("+------------------------------------------+");
+        centerText("|        YOUR RUNNER STATISTICS            |");
+        centerText("+------------------------------------------+");
+        centerText("| Total Errands    : " + std::to_string(total) + std::string(20, ' ') + "|");
+        centerText("| Pending          : " + std::to_string(pending) + std::string(20, ' ') + "|");
+        centerText("| Assigned         : " + std::to_string(assigned) + std::string(20, ' ') + "|");
+        centerText("| Completed        : " + std::to_string(completed) + std::string(20, ' ') + "|");
+        centerText("| Total Earned     : RM " + earnStream.str() + std::string(15, ' ') + "|");
+        centerText("+------------------------------------------+");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
 
     }
     catch (sql::SQLException& e) {
@@ -323,6 +426,19 @@ void claimErrandEarnings(const std::string& username) {
         pstmt->setInt(1, runnerId);
 
         std::unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+        
+        clearScreen();
+        printMenuTitle("Claim Errand Earnings");
+        
+        std::vector<std::pair<std::string, int>> columns = {
+            {"Errand ID", 10},
+            {"Description", 40},
+            {"Earnings", 15}
+        };
+        std::vector<int> widths = {10, 40, 15};
+        
+        printTableHeader(columns);
+        
         bool hasEarnings = false;
         double totalEarned = 0;
 
@@ -332,9 +448,15 @@ void claimErrandEarnings(const std::string& username) {
             std::string desc = res->getString("description");
             double runnerShare = res->getDouble("runner_share");
 
-            std::cout << "Errand ID: " << errandId
-                << " | Desc: " << desc
-                << " | Earn: RM " << std::fixed << std::setprecision(2) << runnerShare << "\n";
+            std::ostringstream earnStream;
+            earnStream << std::fixed << std::setprecision(2) << runnerShare;
+            
+            std::vector<std::string> row = {
+                std::to_string(errandId),
+                truncateString(desc, 40),
+                "RM " + earnStream.str()
+            };
+            printTableRow(row, widths);
 
             totalEarned += runnerShare;
 
@@ -346,8 +468,18 @@ void claimErrandEarnings(const std::string& username) {
             updateStmt->executeUpdate();
         }
 
-        if (!hasEarnings) std::cout << "No earnings to claim yet.\n";
-        else std::cout << "Total earned this session: RM " << std::fixed << std::setprecision(2) << totalEarned << "\n";
+        if (!hasEarnings) {
+            centerText("No earnings to claim yet.");
+        }
+        else {
+            std::ostringstream totalStream;
+            totalStream << std::fixed << std::setprecision(2) << totalEarned;
+            centerText("Total earned this session: RM " + totalStream.str());
+        }
+        
+        printTableFooter(widths);
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
     }
     catch (sql::SQLException& e) { std::cerr << "Database error: " << e.what() << std::endl; }
 }
@@ -355,13 +487,18 @@ void claimErrandEarnings(const std::string& username) {
 // ===== Full runner menu =====
 void runner_menu(const std::string& username) {
     while (true) {
-        std::cout << "\n=== Runner Dashboard ===\n";
-        std::cout << "1. View available errands\n";
-        std::cout << "2. Accept an errand\n";
-        std::cout << "3. View my assigned errands\n";
-        std::cout << "4. View summary stats\n";
-        std::cout << "5. Claim earned errands\n";
-        std::cout << "0. Logout\nEnter choice: ";
+        clearScreen();
+        printMenuTitle("Runner Dashboard - Welcome " + username);
+        printHeader("RUNNER MENU");
+        centerText("1. View available errands");
+        centerText("2. Accept an errand");
+        centerText("3. View my assigned errands");
+        centerText("4. View summary stats");
+        centerText("5. Claim earned errands");
+        centerText("0. Logout");
+        printHeader("");
+        std::cout << "\n";
+        centerText("Enter choice: ");
         int choice = getMenuChoice(0, 6);
 
         switch (choice) {
