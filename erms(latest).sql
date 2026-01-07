@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Dec 31, 2025 at 08:08 AM
+-- Generation Time: Jan 07, 2026 at 03:57 PM
 -- Server version: 8.4.3
 -- PHP Version: 8.3.26
 
@@ -74,7 +74,8 @@ INSERT INTO `errands` (`errand_id`, `requester_id`, `description`, `pickup_loc`,
 (14, 4, 'Buku2', 'Sat', 'DT', 9.31, 'Pending', '2025-12-17 02:56:29', '2025-12-17 02:56:29', NULL, 0),
 (15, 4, 'Luu', 'lugua', 'bro', 11.07, 'Completed', '2025-12-17 03:11:59', '2025-12-23 23:10:43', 20, 1),
 (16, 22, 'parcel', 'ppp', 'aj', 6.58, 'Completed', '2025-12-23 00:41:41', '2025-12-23 23:03:55', 20, 1),
-(17, 26, 'Untuk ApitRunner', 'Satria', 'DT', 8.37, 'Completed', '2025-12-23 23:15:18', '2025-12-23 23:17:05', 20, 1);
+(17, 26, 'Untuk ApitRunner', 'Satria', 'DT', 8.37, 'Completed', '2025-12-23 23:15:18', '2025-12-23 23:17:05', 20, 1),
+(18, 26, 'Parcel Dari PPP', 'PPP', 'Satira', 13.62, 'Completed', '2026-01-07 23:35:23', '2026-01-07 23:38:42', 20, 1);
 
 -- --------------------------------------------------------
 
@@ -104,7 +105,8 @@ INSERT INTO `payments` (`payment_id`, `quote_id`, `errand_id`, `price`, `pay_sta
 (3, 2, 14, 27.93, 'Paid', '2025-12-17 03:01:36', '2025-12-17 03:11:20', 'CreditCard', '3'),
 (4, 3, 15, 33.21, 'Paid', '2025-12-17 03:19:30', '2025-12-17 03:19:30', 'CreditCard', 'ERMS#118843'),
 (5, 4, 16, 19.74, 'Paid', '2025-12-23 00:43:53', '2025-12-23 00:43:53', 'CreditCard', 'ERMS#110060'),
-(6, 5, 17, 25.11, 'Paid', '2025-12-23 23:15:57', '2025-12-23 23:15:57', 'CreditCard', 'ERMS#112833');
+(6, 5, 17, 25.11, 'Paid', '2025-12-23 23:15:57', '2025-12-23 23:15:57', 'CreditCard', 'ERMS#112833'),
+(7, 6, 18, 40.86, 'Paid', '2026-01-07 23:36:23', '2026-01-07 23:36:23', 'CreditCard', 'ERMS#121955');
 
 -- --------------------------------------------------------
 
@@ -136,7 +138,8 @@ INSERT INTO `quotations` (`quote_id`, `errand_id`, `created_at`, `updated_at`, `
 (2, 14, '2025-12-17 02:56:29', '2025-12-17 03:01:36', 3.00, 9.31, 70.00, 30.00, 19.55, 8.38, 'Paid', 'ERMS#115335'),
 (3, 15, '2025-12-17 03:11:59', '2025-12-17 03:19:30', 3.00, 11.07, 70.00, 30.00, 23.25, 9.96, 'Paid', 'ERMS#118843'),
 (4, 16, '2025-12-23 00:41:41', '2025-12-23 00:43:53', 3.00, 6.58, 70.00, 30.00, 13.82, 5.92, 'Paid', 'ERMS#110060'),
-(5, 17, '2025-12-23 23:15:18', '2025-12-23 23:15:57', 3.00, 8.37, 70.00, 30.00, 17.58, 7.53, 'Paid', 'ERMS#112833');
+(5, 17, '2025-12-23 23:15:18', '2025-12-23 23:15:57', 3.00, 8.37, 70.00, 30.00, 17.58, 7.53, 'Paid', 'ERMS#112833'),
+(6, 18, '2026-01-07 23:35:23', '2026-01-07 23:36:23', 3.00, 13.62, 70.00, 30.00, 28.60, 12.26, 'Paid', 'ERMS#121955');
 
 -- --------------------------------------------------------
 
@@ -150,8 +153,21 @@ CREATE TABLE `reports` (
   `top_runner` varchar(255) DEFAULT NULL,
   `report_date` date DEFAULT NULL,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `system_revenue` decimal(10,2) DEFAULT NULL,
+  `total_runner_revenue` decimal(10,2) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Dumping data for table `reports`
+--
+
+INSERT INTO `reports` (`report_id`, `total_errands`, `top_runner`, `report_date`, `created_at`, `updated_at`, `system_revenue`, `total_runner_revenue`) VALUES
+(1, 14, 'apitrunner', '2026-01-07', '2026-01-07 21:26:39', '2026-01-07 21:26:39', 38.37, 89.55),
+(2, 14, 'apitrunner', '2026-01-07', '2026-01-07 21:40:37', '2026-01-07 21:40:37', 38.37, 89.55),
+(3, 14, 'apitrunner', '2026-01-07', '2026-01-07 21:41:57', '2026-01-07 21:41:57', 38.37, 89.55),
+(4, 14, 'apitrunner', '2026-01-07', '2026-01-07 21:48:36', '2026-01-07 21:48:36', 38.37, 89.55),
+(5, 15, 'apitrunner', '2026-01-07', '2026-01-07 23:39:22', '2026-01-07 23:39:22', 50.63, 118.15);
 
 -- --------------------------------------------------------
 
@@ -205,13 +221,14 @@ INSERT INTO `users` (`user_id`, `name`, `email`, `password`, `c_number`, `role`,
 (17, 'entahlanak', 'entah@e.com', 'b20c99df8b2477408bb3b1d9e31889391e5dfee5544e039b4023737e47f76455', '01162674383', 0, '2025-12-17 00:08:20', '2025-12-17 00:08:20'),
 (18, 'John', 'john@gmail.com', '20d8ff2150b414bcbf716d4b1954422a9dcc1b90ac1f6f1951ddc5dc62586f34', '+16758774321', 0, '2025-12-17 00:13:29', '2025-12-17 00:13:29'),
 (19, 'ApitMentari', 'apitmentari@mentari.com', 'f4dab3d7cbd3e4ea', '0128946673', 0, '2025-12-23 00:17:47', '2025-12-23 00:17:47'),
-(20, 'apitrunner', 'apitrunner@gmail.com', '4d4af9ad4505e93a', '0125468872', 2, '2025-12-23 00:25:14', '2025-12-23 00:25:14'),
+(20, 'apitrunner', 'apitrunner@gmail.com', 'f4dab3d7cbd3e4ea', '0125468872', 2, '2025-12-23 00:25:14', '2026-01-07 22:29:11'),
 (21, 'hakim ', 'zona@gmail.com', '3ddbee10828763ad', '60145808624123', 0, '2025-12-23 00:36:45', '2025-12-23 00:36:45'),
 (22, 'hakim', 'hakim@gmail.com', 'b02eebb0f6e3c4fd', '0127786645', 0, '2025-12-23 00:40:34', '2025-12-23 00:40:34'),
 (23, 'ApitAdmin', 'apit@admin.com', 'df95b0d31160a8d9', '0123895532', 1, '2025-12-23 00:49:50', '2025-12-23 00:49:50'),
 (24, 'soli', 'soli@joli.com', 'd90567e52a18772a', '0146324516', 2, '2025-12-23 00:54:48', '2025-12-23 00:54:48'),
 (25, 'AdminSatu', 'adminsatu@erms.com', 'd2467995be2e3f8f', '0127513247', 1, '2025-12-23 23:08:18', '2025-12-23 23:08:18'),
-(26, 'UserSatu', 'usersatu@erms.com', 'b770cf2ab9bedcfd', '0128590032', 0, '2025-12-23 23:14:18', '2025-12-23 23:14:18');
+(26, 'UserSatu', 'usersatu@erms.com', 'b770cf2ab9bedcfd', '0128590032', 0, '2025-12-23 23:14:18', '2025-12-23 23:14:18'),
+(27, '1547886', 'uwu@pep.com', 'f4dab3d7cbd3e4ea', '01116879969', 0, '2026-01-07 22:24:21', '2026-01-07 22:24:21');
 
 --
 -- Indexes for dumped tables
@@ -281,25 +298,25 @@ ALTER TABLE `assignments`
 -- AUTO_INCREMENT for table `errands`
 --
 ALTER TABLE `errands`
-  MODIFY `errand_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
+  MODIFY `errand_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
 
 --
 -- AUTO_INCREMENT for table `payments`
 --
 ALTER TABLE `payments`
-  MODIFY `payment_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `payment_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `quotations`
 --
 ALTER TABLE `quotations`
-  MODIFY `quote_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `quote_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `reports`
 --
 ALTER TABLE `reports`
-  MODIFY `report_id` int NOT NULL AUTO_INCREMENT;
+  MODIFY `report_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `users`
