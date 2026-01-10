@@ -42,17 +42,6 @@ void forgetPassword() {
     sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
     sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
     con->setSchema("erms");
-    
-    // Beautiful database connection success message
-    std::cout << "\n";
-    centerText("========================================");
-    centerText("   [OK] SUCCESSFULLY CONNECTED! [OK]");
-    centerText("========================================");
-    centerText("   Database Server: localhost:3306");
-    centerText("   Database Schema: erms");
-    centerText("   Status: Connected");
-    centerText("========================================");
-    std::cout << "\n";
 
     // Check if username exists
     sql::PreparedStatement* checkStmt = con->prepareStatement(

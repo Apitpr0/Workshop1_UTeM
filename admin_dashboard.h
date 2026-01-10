@@ -12,6 +12,7 @@ void manageErrands();              // Admin can assign errands, update statuses,
 
 // ===== Reporting =====
 void generateReports();            // Generate reports (e.g., summary stats, earnings, errands completed)
+void showMonthlyErrandsChart();    // Display monthly errands bar chart
 
 // ===== Admin Menu =====
 void admin_menu(const std::string& adminUsername); // Display admin dashboard menu

@@ -4,6 +4,8 @@
 #include <limits>
 #include <regex>
 #include <vector>
+#include <tuple>
+#include <sstream>
 #include <cppconn/driver.h>
 #include <cppconn/connection.h>
 #include <cppconn/prepared_statement.h>
@@ -21,6 +23,19 @@ void displayStarChart(const std::string& label, double amount) {
     std::ostringstream amountStream;
     amountStream << std::fixed << std::setprecision(2) << amount;
     centerText(label + " : RM " + amountStream.str() + " (" + starString + ")");
+}
+
+// Helper untuk format transaction ID dengan prefix ERMS#
+std::string formatTransactionId(const std::string& transactionId) {
+    if (transactionId.empty()) {
+        return "ERMS#UNKNOWN";
+    }
+    // Check if already has ERMS# prefix
+    if (transactionId.find("ERMS#") == 0) {
+        return transactionId;
+    }
+    // If not, add ERMS# prefix
+    return "ERMS#" + transactionId;
 }
 
 // ===== View all users =====
@@ -533,6 +548,102 @@ void showTopRunnersByErrands() {
         delete con;
 }
 
+// ===== Monthly Errands Chart =====
+void showMonthlyErrandsChart() {
+    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+    con->setSchema("erms");
+
+    // Query to get monthly errands count
+    sql::PreparedStatement* pstmt = con->prepareStatement(
+        "SELECT YEAR(created_at) AS year, "
+        "MONTH(created_at) AS month, "
+        "COUNT(*) AS errand_count "
+        "FROM errands "
+        "GROUP BY YEAR(created_at), MONTH(created_at) "
+        "ORDER BY year ASC, month ASC"
+    );
+    sql::ResultSet* res = pstmt->executeQuery();
+
+    clearScreen();
+    printMenuTitle("Monthly Errands Chart");
+
+    // First pass: collect data and find max count for scaling
+    std::vector<std::tuple<int, int, int>> monthlyData; // year, month, count
+    int maxCount = 0;
+    bool hasData = false;
+
+    while (res->next()) {
+        hasData = true;
+        int year = res->getInt("year");
+        int month = res->getInt("month");
+        int count = res->getInt("errand_count");
+        monthlyData.push_back(std::make_tuple(year, month, count));
+        if (count > maxCount) {
+            maxCount = count;
+        }
+    }
+
+    if (!hasData) {
+        centerText("No errands found in the database.");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::cin.get();
+        delete res;
+        delete pstmt;
+        delete con;
+        return;
+    }
+
+    // Month names array
+    const std::string monthNames[] = {
+        "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    };
+
+    // Calculate scaling factor (max bar width: 50 characters)
+    const int maxBarWidth = 50;
+    double scaleFactor = (maxCount > 0) ? static_cast<double>(maxBarWidth) / maxCount : 1.0;
+
+    std::cout << "\n";
+    centerText("Monthly Errands Ordered (All Time)");
+    std::cout << "\n";
+    centerText("========================================");
+    std::cout << "\n";
+
+    // Second pass: display the bar chart
+    for (const auto& data : monthlyData) {
+        int year = std::get<0>(data);
+        int month = std::get<1>(data);
+        int count = std::get<2>(data);
+
+        // Create month label
+        std::string monthLabel = monthNames[month] + " " + std::to_string(year);
+        
+        // Calculate bar length with scaling
+        int barLength = static_cast<int>(count * scaleFactor + 0.5); // Round to nearest
+        if (barLength < 1 && count > 0) barLength = 1; // At least 1 char if count > 0
+        std::string barString(barLength, '#');
+
+        // Format and display
+        std::ostringstream line;
+        line << monthLabel << " : " << count << " errands (" << barString << ")";
+        centerText(line.str());
+    }
+
+    std::cout << "\n";
+    centerText("========================================");
+    std::cout << "\n";
+    centerText("Note: Bar length is proportional to maximum count");
+    std::cout << "\nPress Enter to continue...";
+    std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+    std::cin.get();
+
+    delete res;
+    delete pstmt;
+    delete con;
+}
+
 // ===== System Revenue =====
 void showSystemRevenue() {
     sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
@@ -727,7 +838,7 @@ void viewAllReceipts() {
 
         while (res->next()) {
             hasReceipts = true;
-            std::string transactionId = res->getString("transaction_id");
+            std::string transactionId = formatTransactionId(res->getString("transaction_id"));
             int quoteId = res->getInt("quote_id");
             int errandId = res->getInt("errand_id");
             double base = res->getDouble("base_price_per_km");
@@ -1206,7 +1317,7 @@ void searchReceipts() {
         
         while (res->next()) {
             hasResults = true;
-            std::string transactionId = res->getString("transaction_id");
+            std::string transactionId = formatTransactionId(res->getString("transaction_id"));
             int quoteId = res->getInt("quote_id");
             int errandId = res->getInt("errand_id");
             double base = res->getDouble("base_price_per_km");
@@ -1468,7 +1579,8 @@ void searchQuotations() {
             centerText("| System Fee     : RM " + systemFeeStream.str() + std::string(15, ' ') + "|");
             centerText("| Status         : " + res->getString("status") + std::string(20, ' ') + "|");
             if (!res->isNull("transaction_id")) {
-                centerText("| Transaction ID : " + res->getString("transaction_id") + std::string(15, ' ') + "|");
+                std::string transactionId = formatTransactionId(res->getString("transaction_id"));
+                centerText("| Transaction ID : " + transactionId + std::string(15, ' ') + "|");
             }
             centerText("+------------------------------------------+");
             std::cout << "\n";
@@ -1532,37 +1644,41 @@ void reportingModule() {
         clearScreen();
         printMenuTitle("Reporting Module");
         printHeader("REPORTING OPTIONS");
-        centerText("1. Top Runners by Income");
-        centerText("2. Top Runners by Errands");
-        centerText("3. System Revenue");
-        centerText("4. All Runner Revenue");
-        centerText("5. Save Report Snapshot");
+        centerText("1. Monthly Errands Chart");
+        centerText("2. System Revenue");
+        centerText("3. Top Runners by Income");
+        centerText("4. Top Runners by Errands");
+        centerText("5. All Runner Revenue");
         centerText("6. View All Receipts");
+        centerText("7. Save Report Snapshot");
         centerText("0. Back to Admin Dashboard");
         printHeader("");
         std::cout << "\n";
         centerText("Enter choice: ");
 
-        int choice = getMenuChoice(0, 6);
+        int choice = getMenuChoice(0, 7);
         if (choice == 0) break;
 
         if (choice == 1) {
-            showTopRunnersByIncome();
+            showMonthlyErrandsChart();
         }
         else if (choice == 2) {
-            showTopRunnersByErrands();
-        }
-        else if (choice == 3) {
             showSystemRevenue();
         }
+        else if (choice == 3) {
+            showTopRunnersByIncome();
+        }
         else if (choice == 4) {
-            showAllRunnerRevenue();
+            showTopRunnersByErrands();
         }
         else if (choice == 5) {
-            saveReportSnapshot();
+            showAllRunnerRevenue();
         }
         else if (choice == 6) {
             viewAllReceipts();
+        }
+        else if (choice == 7) {
+            saveReportSnapshot();
         }
     }
 }
