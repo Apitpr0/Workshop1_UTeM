@@ -498,7 +498,6 @@ void runner_menu(const std::string& username) {
         centerText("0. Logout");
         printHeader("");
         std::cout << "\n";
-        centerText("Enter choice: ");
         int choice = getMenuChoice(0, 6);
 
         switch (choice) {

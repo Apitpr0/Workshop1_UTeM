@@ -10,6 +10,8 @@
 #include <ctime>
 #include <iomanip>  // for formatting
 #include <sstream>
+#include <cctype>   // for std::isdigit
+#include <cmath>    // for std::isnan, std::isinf
 #include "utils.h"  // untuk getMenuChoice dan UI functions
 
 // ===== Get user ID from username =====
@@ -83,7 +85,6 @@ void viewMyErrands(const std::string& username) {
     centerText("0. Back");
     printHeader("");
     std::cout << "\n";
-    centerText("Enter choice: ");
     
     int filterChoice = 0;
     while (true) {
@@ -93,10 +94,7 @@ void viewMyErrands(const std::string& username) {
             break;
         }
         else {
-            std::cin.clear();
-            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
             printError("Invalid choice! Enter a number between 0 and 4.");
-            centerText("Enter choice: ");
         }
     }
 
@@ -258,16 +256,75 @@ void viewQuotation(const std::string& username) {
 void makePayment(const std::string& username) {
     int userId = getUserId(username);
     if (userId == -1) {
-        std::cout << "User not found!\n";
+        printError("User not found! Cannot proceed with payment.");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
         return;
     }
 
     clearScreen();
     printMenuTitle("Make Payment");
+	viewQuotation(username);
     
     int quoteId;
     quoteId = getCenteredIntInput("Enter Quotation ID to pay (or 0 to go back): ");
     if (quoteId == 0) return; // Back to menu
+    
+    if (quoteId < 1) {
+        printError("Invalid quotation ID! Please enter a valid ID.");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+        return;
+    }
+
+    // Validate quotation exists and belongs to user before asking for payment details
+    try {
+        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
+        con->setSchema("erms");
+
+        // Check if quotation exists, is pending, and belongs to this user
+        std::unique_ptr<sql::PreparedStatement> checkStmt(
+            con->prepareStatement(
+                "SELECT q.quote_id, q.status "
+                "FROM quotations q "
+                "JOIN errands e ON q.errand_id = e.errand_id "
+                "WHERE q.quote_id=? AND e.requester_id=?"
+            )
+        );
+        checkStmt->setInt(1, quoteId);
+        checkStmt->setInt(2, userId);
+
+        std::unique_ptr<sql::ResultSet> checkRes(checkStmt->executeQuery());
+        if (!checkRes->next()) {
+            printError("Quotation not found or does not belong to you!");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        
+        std::string quoteStatus = checkRes->getString("status");
+        if (quoteStatus != "Pending") {
+            printError("This quotation has already been paid or is not available for payment!");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+    }
+    catch (sql::SQLException& e) {
+        printError("Database connection error! Please try again later.");
+        std::cerr << "Database error: " << e.what() << std::endl;
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+        return;
+    }
+    catch (std::exception& e) {
+        printError("An unexpected error occurred while validating quotation!");
+        std::cerr << "Error: " << e.what() << std::endl;
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+        return;
+    }
 
     clearScreen();
     printMenuTitle("Payment Method: Credit / Debit Card");
@@ -275,58 +332,163 @@ void makePayment(const std::string& username) {
     std::cout << "\n";
     
     std::string cardNumber, expiryDate, cvv;
-    cardNumber = getCenteredInput("Card Number (16 digits, or 'back' to cancel): ");
-    if (cardNumber == "back" || cardNumber == "Back" || cardNumber == "BACK") {
-        printInfo("Payment cancelled.");
-        std::cout << "\nPress Enter to continue...";
-        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-        std::cin.get();
-        return;
+    
+    // Validate card number
+    while (true) {
+        cardNumber = getCenteredInput("Card Number (12-19 digits, or 'back' to cancel): ");
+        if (cardNumber == "back" || cardNumber == "Back" || cardNumber == "BACK") {
+            printInfo("Payment cancelled.");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        
+        // Remove spaces and dashes for validation
+        std::string cardNumberClean;
+        for (char c : cardNumber) {
+            if (std::isdigit(c)) cardNumberClean += c;
+        }
+        
+        if (cardNumberClean.empty()) {
+            printError("Card number cannot be empty! Please enter valid digits.");
+            continue;
+        }
+        
+        if (cardNumberClean.length() < 12 || cardNumberClean.length() > 19) {
+            printError("Card number must be between 12 and 19 digits!");
+            continue;
+        }
+        
+        // Check if all characters are digits (after cleaning)
+        bool allDigits = true;
+        for (char c : cardNumberClean) {
+            if (!std::isdigit(c)) {
+                allDigits = false;
+                break;
+            }
+        }
+        
+        if (!allDigits) {
+            printError("Card number must contain only digits!");
+            continue;
+        }
+        
+        cardNumber = cardNumberClean;
+        break;
     }
 
-    expiryDate = getCenteredInput("Expiry Date (MM/YY, or 'back' to cancel): ");
-    if (expiryDate == "back" || expiryDate == "Back" || expiryDate == "BACK") {
-        printInfo("Payment cancelled.");
-        std::cout << "\nPress Enter to continue...";
-        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-        std::cin.get();
-        return;
+    // Validate expiry date (MM/YY format)
+    while (true) {
+        expiryDate = getCenteredInput("Expiry Date (MM/YY, or 'back' to cancel): ");
+        if (expiryDate == "back" || expiryDate == "Back" || expiryDate == "BACK") {
+            printInfo("Payment cancelled.");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        
+        if (expiryDate.length() != 5 || expiryDate[2] != '/') {
+            printError("Invalid format! Please use MM/YY format (e.g., 12/25)");
+            continue;
+        }
+        
+        std::string monthStr = expiryDate.substr(0, 2);
+        std::string yearStr = expiryDate.substr(3, 2);
+        
+        // Check if month and year are numeric
+        bool validMonth = true, validYear = true;
+        for (char c : monthStr) {
+            if (!std::isdigit(c)) {
+                validMonth = false;
+                break;
+            }
+        }
+        for (char c : yearStr) {
+            if (!std::isdigit(c)) {
+                validYear = false;
+                break;
+            }
+        }
+        
+        if (!validMonth || !validYear) {
+            printError("Month and year must be numeric! Use MM/YY format.");
+            continue;
+        }
+        
+        int month = std::stoi(monthStr);
+        int year = std::stoi(yearStr);
+        
+        if (month < 1 || month > 12) {
+            printError("Invalid month! Month must be between 01 and 12.");
+            continue;
+        }
+        
+        // Basic expiry validation (should be future date, but simplified for now)
+        if (year < 0 || year > 99) {
+            printError("Invalid year! Year must be between 00 and 99.");
+            continue;
+        }
+        
+        break;
     }
 
-    cvv = getCenteredInput("CVV (3 digits, or 'back' to cancel): ");
-    if (cvv == "back" || cvv == "Back" || cvv == "BACK") {
-        printInfo("Payment cancelled.");
-        std::cout << "\nPress Enter to continue...";
-        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-        std::cin.get();
-        return;
+    // Validate CVV
+    while (true) {
+        cvv = getCenteredInput("CVV (3 digits, or 'back' to cancel): ");
+        if (cvv == "back" || cvv == "Back" || cvv == "BACK") {
+            printInfo("Payment cancelled.");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        
+        if (cvv.length() != 3) {
+            printError("CVV must be exactly 3 digits!");
+            continue;
+        }
+        
+        bool allDigits = true;
+        for (char c : cvv) {
+            if (!std::isdigit(c)) {
+                allDigits = false;
+                break;
+            }
+        }
+        
+        if (!allDigits) {
+            printError("CVV must contain only digits!");
+            continue;
+        }
+        
+        break;
     }
 
-    if (cardNumber.length() < 12 || cvv.length() < 3) {
-        printError("Invalid card details!");
-        std::cout << "\nPress Enter to continue...";
-        std::cin.get();
-        return;
-    }
-
+    // Process payment with transaction safety
     try {
         sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
         std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
         con->setSchema("erms");
+        
+        // Disable autocommit for transaction safety
+        con->setAutoCommit(false);
 
-        // Get quotation details
+        // Get quotation details and verify again (double-check)
         std::unique_ptr<sql::PreparedStatement> qStmt(
             con->prepareStatement(
-                "SELECT errand_id, base_price_per_km, distance_km, "
-                "runner_percentage, system_percentage "
-                "FROM quotations WHERE quote_id=? AND status='Pending'"
+                "SELECT q.errand_id, q.base_price_per_km, q.distance_km, "
+                "q.runner_percentage, q.system_percentage, q.status, e.requester_id "
+                "FROM quotations q "
+                "JOIN errands e ON q.errand_id = e.errand_id "
+                "WHERE q.quote_id=? AND e.requester_id=? AND q.status='Pending'"
             )
         );
         qStmt->setInt(1, quoteId);
+        qStmt->setInt(2, userId);
 
         std::unique_ptr<sql::ResultSet> qRes(qStmt->executeQuery());
         if (!qRes->next()) {
-            printError("Quotation not found or already paid!");
+            con->rollback();
+            printError("Quotation not found, already paid, or does not belong to you!");
             std::cout << "\nPress Enter to continue...";
             std::cin.get();
             return;
@@ -338,15 +500,34 @@ void makePayment(const std::string& username) {
         double runnerPerc = qRes->getDouble("runner_percentage");
         double systemPerc = qRes->getDouble("system_percentage");
 
+        // Validate calculated values
+        if (base <= 0 || distance <= 0 || runnerPerc < 0 || systemPerc < 0) {
+            con->rollback();
+            printError("Invalid quotation data! Please contact support.");
+            std::cerr << "Error: Invalid quotation values detected." << std::endl;
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+
         double total = base * distance;
         double runnerFee = total * runnerPerc / 100.0;
         double systemFee = total * systemPerc / 100.0;
+
+        // Validate total amount
+        if (total <= 0 || std::isnan(total) || std::isinf(total)) {
+            con->rollback();
+            printError("Invalid payment amount calculated! Please contact support.");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
 
         // Generate transaction ID
         std::srand(static_cast<unsigned>(std::time(nullptr)));
         std::string transactionId = "ERMS#" + std::to_string(100000 + std::rand() % 900000);
 
-        std::string payStatus = "Paid"; // gunakan variable, boleh extend nanti
+        std::string payStatus = "Paid";
 
         // Insert payment
         std::unique_ptr<sql::PreparedStatement> pStmt(
@@ -374,7 +555,19 @@ void makePayment(const std::string& username) {
         uStmt->setDouble(2, systemFee);
         uStmt->setString(3, transactionId);
         uStmt->setInt(4, quoteId);
-        uStmt->executeUpdate();
+        int updatedRows = uStmt->executeUpdate();
+        
+        if (updatedRows == 0) {
+            con->rollback();
+            printError("Failed to update quotation! Payment not processed.");
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+
+        // Commit transaction
+        con->commit();
+        con->setAutoCommit(true);
 
         // ================= RECEIPT =================
         clearScreen();
@@ -408,7 +601,36 @@ void makePayment(const std::string& username) {
 
     }
     catch (sql::SQLException& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
+        printError("Database error occurred during payment processing!");
+        std::cerr << "SQL Error Code: " << e.getErrorCode() << std::endl;
+        std::cerr << "SQL State: " << e.getSQLState() << std::endl;
+        std::cerr << "Error Message: " << e.what() << std::endl;
+        
+        // Try to rollback if connection is still valid
+        try {
+            sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+            std::unique_ptr<sql::Connection> con(driver->connect("tcp://localhost:3306", "root", ""));
+            con->setSchema("erms");
+            con->rollback();
+        }
+        catch (...) {
+            // Ignore rollback errors
+        }
+        
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+    }
+    catch (std::exception& e) {
+        printError("An unexpected error occurred during payment processing!");
+        std::cerr << "Error: " << e.what() << std::endl;
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+    }
+    catch (...) {
+        printError("A critical error occurred! Payment may not have been processed.");
+        std::cerr << "Unknown error occurred during payment processing." << std::endl;
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
     }
 }
 
@@ -489,19 +711,15 @@ void createNewErrand(const std::string& username) {
         centerText("2. Back to dashboard");
         printHeader("");
         std::cout << "\n";
-        centerText("Enter choice: ");
         
         int postChoice = 0;
         while (true) {
-            if (std::cin >> postChoice && (postChoice == 1 || postChoice == 2)) {
-                std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+            postChoice = getCenteredIntInput("Enter choice (1 or 2): ");
+            if (postChoice == 1 || postChoice == 2) {
                 break;
             }
             else {
-                std::cin.clear();
-                std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
                 printError("Invalid choice! Enter 1 or 2.");
-                centerText("Enter choice: ");
             }
         }
         if (postChoice == 1) viewQuotation(username);
@@ -524,7 +742,7 @@ void updateErrandStatus(const std::string& username) {
         std::unique_ptr<sql::PreparedStatement> pstmt(
             con->prepareStatement(
                 "SELECT errand_id, description, status FROM errands "
-                "WHERE requester_id=? AND (status='Pending' OR status='Assigned') ORDER BY created_at DESC"
+                "WHERE requester_id=? AND (status='Assigned') ORDER BY created_at DESC"
             )
         );
         pstmt->setInt(1, userId);
@@ -564,25 +782,19 @@ void updateErrandStatus(const std::string& username) {
 
         int errandId;
         while (true) {
-            centerText("Enter the ID of the errand to mark as COMPLETED (or 0 to go back): ");
-            if (std::cin >> errandId) {
-                std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-                if (errandId == 0) return; // Back to menu
-                break;
-            }
-            else {
-                std::cin.clear();
-                std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-                printError("Invalid input! Enter a valid ID or 0 to go back.");
-            }
+            errandId = getCenteredIntInput("Enter the ID of the errand to mark as COMPLETED (or 0 to go back): ");
+            if (errandId == 0) return; // Back to menu
+            break;
         }
 
         char confirm;
         while (true) {
-            centerText("Are you sure you want to mark this errand as COMPLETED? (Y/N): ");
-            std::cin >> confirm; std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-            if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
-            else printError("Invalid input! Enter Y or N.");
+            std::string confirmInput = getCenteredInput("Are you sure you want to mark this errand as COMPLETED? (Y/N): ");
+            if (confirmInput.length() == 1) {
+                confirm = confirmInput[0];
+                if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
+            }
+            printError("Invalid input! Enter Y or N.");
         }
         if (confirm == 'N' || confirm == 'n') {
             printInfo("Operation canceled.");
@@ -660,25 +872,19 @@ void cancelPendingErrand(const std::string& username) {
 
     int errandId;
     while (true) {
-        centerText("Enter the ID of the errand to cancel (or 0 to go back): ");
-        if (std::cin >> errandId) {
-            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-            if (errandId == 0) return; // Back to menu
-            break;
-        }
-        else {
-            std::cin.clear();
-            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-            printError("Invalid input! Enter a valid ID or 0 to go back.");
-        }
+        errandId = getCenteredIntInput("Enter the ID of the errand to cancel (or 0 to go back): ");
+        if (errandId == 0) return; // Back to menu
+        break;
     }
 
     char confirm;
     while (true) {
-        centerText("Are you sure you want to CANCEL this errand? (Y/N): ");
-        std::cin >> confirm; std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-        if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
-        else printError("Invalid input! Enter Y or N.");
+        std::string confirmInput = getCenteredInput("Are you sure you want to CANCEL this errand? (Y/N): ");
+        if (confirmInput.length() == 1) {
+            confirm = confirmInput[0];
+            if (confirm == 'Y' || confirm == 'y' || confirm == 'N' || confirm == 'n') break;
+        }
+        printError("Invalid input! Enter Y or N.");
     }
     if (confirm == 'N' || confirm == 'n') {
         printInfo("Operation canceled.");
@@ -768,7 +974,6 @@ void user_menu(const std::string& username) {
         centerText("0. Logout");
         printHeader("");
         std::cout << "\n";
-        centerText("Enter choice: ");
         int choice = getMenuChoice(0, 7);
 
         switch (choice) {

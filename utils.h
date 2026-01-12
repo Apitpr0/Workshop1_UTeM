@@ -73,23 +73,6 @@ inline void centerColoredText(const std::string& text, int color, int width = -1
     std::cout << "\n";
 }
 
-// Inline supaya boleh include di banyak file tanpa duplicate
-inline int getMenuChoice(int min, int max) {
-    int choice;
-    while (true) {
-        std::cin >> choice;
-        if (std::cin.fail() || choice < min || choice > max) {
-            std::cin.clear();
-            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-            std::cout << "Invalid input. Enter a number between " << min << " and " << max << ": ";
-        }
-        else {
-            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-            return choice;
-        }
-    }
-}
-
 // Separator for table
 inline void printSeparator(int width) {
     std::cout << std::string(width, '-') << "\n";
@@ -204,6 +187,24 @@ inline int getCenteredIntInput(const std::string& prompt, int width = -1) {
             std::cin.clear();
             std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
             centerText("Invalid input! Please enter a valid number.");
+        }
+    }
+}
+
+// Get centered input (char) - for single character inputs
+inline char getCenteredCharInput(const std::string& prompt, int width = -1) {
+    if (width == -1) width = getConsoleWidth();
+    char value;
+    while (true) {
+        centerInputPrompt(prompt, width);
+        if (std::cin >> value) {
+            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+            return value;
+        }
+        else {
+            std::cin.clear();
+            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+            centerText("Invalid input! Please enter a valid character.");
         }
     }
 }
@@ -430,4 +431,27 @@ inline void printInfo(const std::string& message) {
     centerText(msgLine, consoleWidth);
     centerColoredText(bottomBorder, COLOR_CYAN, consoleWidth);
     std::cout << "\n";
+}
+
+// Inline supaya boleh include di banyak file tanpa duplicate
+// Note: This function must be defined after centerInputPrompt and printError
+inline int getMenuChoice(int min, int max) {
+    int choice;
+    while (true) {
+        centerInputPrompt("Enter choice: ");
+        if (std::cin >> choice) {
+            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+            if (choice >= min && choice <= max) {
+                return choice;
+            }
+            else {
+                printError("Invalid input. Enter a number between " + std::to_string(min) + " and " + std::to_string(max) + ".");
+            }
+        }
+        else {
+            std::cin.clear();
+            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+            printError("Invalid input. Enter a number between " + std::to_string(min) + " and " + std::to_string(max) + ".");
+        }
+    }
 }

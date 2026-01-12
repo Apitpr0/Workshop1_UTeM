@@ -163,7 +163,6 @@ void show_dashboard() {
         std::cout << "\n";
         printHeader("");
         std::cout << "\n";
-        centerText("Enter choice: ");
         int choice = getMenuChoice(0, 5);
 
         switch (choice) {

@@ -901,7 +901,6 @@ void searchUsers() {
     centerText("3. Role");
     printHeader("");
     std::cout << "\n";
-    centerText("Enter choice: ");
     
     int searchType = getMenuChoice(1, 3);
     
@@ -1032,7 +1031,6 @@ void searchErrands() {
     centerText("5. Status");
     printHeader("");
     std::cout << "\n";
-    centerText("Enter choice: ");
     
     int searchType = getMenuChoice(1, 5);
 
@@ -1231,7 +1229,6 @@ void searchReceipts() {
     centerText("3. Errand ID");
     printHeader("");
     std::cout << "\n";
-    centerText("Enter choice: ");
     
     int searchType = getMenuChoice(1, 3);
     
@@ -1380,7 +1377,6 @@ void searchRunners() {
     centerText("2. Email");
     printHeader("");
     std::cout << "\n";
-    centerText("Enter choice: ");
     
     int searchType = getMenuChoice(1, 2);
 
@@ -1484,7 +1480,6 @@ void searchQuotations() {
     centerText("3. Status");
     printHeader("");
     std::cout << "\n";
-    centerText("Enter choice: ");
     
     int searchType = getMenuChoice(1, 3);
     
@@ -1615,7 +1610,6 @@ void searchModule() {
         centerText("0. Back to Admin Dashboard");
         printHeader("");
         std::cout << "\n";
-        centerText("Enter choice: ");
 
         int choice = getMenuChoice(0, 5);
         if (choice == 0) break;
@@ -1654,7 +1648,6 @@ void reportingModule() {
         centerText("0. Back to Admin Dashboard");
         printHeader("");
         std::cout << "\n";
-        centerText("Enter choice: ");
 
         int choice = getMenuChoice(0, 7);
         if (choice == 0) break;
@@ -1699,7 +1692,6 @@ void admin_menu(const std::string& adminUsername) {
         centerText("0. Logout");
         printHeader("");
         std::cout << "\n";
-        centerText("Enter choice: ");
 
         int choice = getMenuChoice(0, 7);
         if (choice == 0) break;

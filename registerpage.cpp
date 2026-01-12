@@ -32,10 +32,7 @@ bool registerUser() {
     centerText("0. Back to main menu");
     printHeader("");
     std::cout << "\n";
-    centerText("Enter choice: ");
-    int choice;
-    cin >> choice;
-    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+    int choice = getMenuChoice(0, 3);
 
     if (choice == 0) {
         printInfo("Registration cancelled.");

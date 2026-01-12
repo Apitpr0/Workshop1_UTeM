@@ -14,6 +14,6 @@ int main() {
     show_dashboard();
 
     // Program ends here
-    std::cout << "\nExiting program. Goodbye!\n";
+    std::cout << "\nExiting program. Thank You for using ERMS!\n";
     return 0;
 }
