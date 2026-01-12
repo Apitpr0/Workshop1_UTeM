@@ -1,8 +1,6 @@
 #include <iostream>
 
 // Forward declarations
-bool registerUser();
-void show_login_page();
 void test_db_connection();
 void show_dashboard();
 
