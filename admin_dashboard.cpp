@@ -181,7 +181,9 @@ void viewAllErrands() {
         std::string runnerName = res->isNull("runner") ? "Unassigned" : res->getString("runner");
         std::ostringstream distStream;
         distStream << std::fixed << std::setprecision(2) << res->getDouble("distance");
+        std::string status = res->getString("status");
 
+        // Prepare row data
         std::vector<std::string> row = {
             std::to_string(res->getInt("errand_id")),
             truncateString(res->getString("requester"), 15),
@@ -190,10 +192,57 @@ void viewAllErrands() {
             truncateString(res->getString("pickup_loc"), 15),
             truncateString(res->getString("dropoff_loc"), 15),
             distStream.str(),
-            truncateString(res->getString("status"), 12),
+            truncateString(status, 12),
             truncateString(res->getString("created_at"), 20)
         };
-        printTableRow(row, widths);
+
+        // Print row with colored status
+        int width = getConsoleWidth();
+        int totalWidth = 0;
+        for (int w : widths) {
+            totalWidth += w;
+        }
+        totalWidth += static_cast<int>(widths.size()) + 1;
+        
+        int padding = (width - totalWidth) / 2;
+        if (padding > 0) std::cout << std::string(padding, ' ');
+        
+        setColor(COLOR_CYAN);
+        std::cout << "|";
+        resetColor();
+        
+        // Print each column
+        for (size_t i = 0; i < row.size() && i < widths.size(); ++i) {
+            std::string val = row[i];
+            if (val.length() > static_cast<size_t>(widths[i])) {
+                val = val.substr(0, widths[i] - 3) + "...";
+            }
+            
+            // Color status column (index 7)
+            if (i == 7) {
+                int statusColor = COLOR_LIGHT_GRAY; // default
+                if (status == "Pending") {
+                    statusColor = COLOR_YELLOW;
+                }
+                else if (status == "Assigned") {
+                    statusColor = COLOR_CYAN;
+                }
+                else if (status == "Completed") {
+                    statusColor = COLOR_GREEN;
+                }
+                setColor(statusColor);
+                std::cout << std::left << std::setw(widths[i]) << val;
+                resetColor();
+            }
+            else {
+                std::cout << std::left << std::setw(widths[i]) << val;
+            }
+            
+            setColor(COLOR_CYAN);
+            std::cout << "|";
+            resetColor();
+        }
+        std::cout << "\n";
     }
 
     if (!hasData) {
@@ -201,6 +250,43 @@ void viewAllErrands() {
     }
 
     printTableFooter(widths);
+    
+    // Print color legend
+    std::cout << "\n";
+    centerText("Status Color Legend:");
+    std::cout << "\n";
+    
+    // Pending - Yellow
+    int consoleWidth = getConsoleWidth();
+    std::string pendingText = "Pending   - ";
+    std::string pendingDesc = "Waiting for assignment";
+    int pendingTotalLen = static_cast<int>(pendingText.length() + pendingDesc.length());
+    int pendingPadding = (consoleWidth - pendingTotalLen) / 2;
+    if (pendingPadding > 0) std::cout << std::string(pendingPadding, ' ');
+    std::cout << pendingText;
+    printColored(pendingDesc, COLOR_YELLOW);
+    std::cout << "\n";
+    
+    // Assigned - Cyan
+    std::string assignedText = "Assigned  - ";
+    std::string assignedDesc = "Currently in progress";
+    int assignedTotalLen = static_cast<int>(assignedText.length() + assignedDesc.length());
+    int assignedPadding = (consoleWidth - assignedTotalLen) / 2;
+    if (assignedPadding > 0) std::cout << std::string(assignedPadding, ' ');
+    std::cout << assignedText;
+    printColored(assignedDesc, COLOR_CYAN);
+    std::cout << "\n";
+    
+    // Completed - Green
+    std::string completedText = "Completed - ";
+    std::string completedDesc = "Successfully finished";
+    int completedTotalLen = static_cast<int>(completedText.length() + completedDesc.length());
+    int completedPadding = (consoleWidth - completedTotalLen) / 2;
+    if (completedPadding > 0) std::cout << std::string(completedPadding, ' ');
+    std::cout << completedText;
+    printColored(completedDesc, COLOR_GREEN);
+    std::cout << "\n";
+    
     std::cout << "\nPress Enter to continue...";
     std::cin.get();
 
@@ -237,34 +323,159 @@ void updateErrandStatusAdmin() {
         }
     }
 
-    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
-    con->setSchema("erms");
+    try {
+        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+        con->setSchema("erms");
 
-    sql::PreparedStatement* pstmt = con->prepareStatement(
-        "UPDATE errands SET status=? WHERE errand_id=?"
-    );
-    pstmt->setString(1, newStatus);
-    pstmt->setInt(2, errandId);
-    int updated = pstmt->executeUpdate();
-    if (updated > 0) {
-        printSuccess("Errand status updated successfully!");
-    }
-    else {
-        printError("Errand not found!");
-    }
+        // First, verify that the errand exists
+        sql::PreparedStatement* checkStmt = con->prepareStatement(
+            "SELECT errand_id FROM errands WHERE errand_id=?"
+        );
+        checkStmt->setInt(1, errandId);
+        sql::ResultSet* checkRes = checkStmt->executeQuery();
+        
+        if (!checkRes->next()) {
+            printError("Errand not found! Please enter a valid errand ID.");
+            delete checkRes;
+            delete checkStmt;
+            delete con;
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        delete checkRes;
+        delete checkStmt;
 
-    delete pstmt;
-    delete con;
+        // Update the errand status
+        sql::PreparedStatement* pstmt = con->prepareStatement(
+            "UPDATE errands SET status=? WHERE errand_id=?"
+        );
+        pstmt->setString(1, newStatus);
+        pstmt->setInt(2, errandId);
+        int updated = pstmt->executeUpdate();
+        
+        if (updated > 0) {
+            printSuccess("Errand status updated successfully!");
+        }
+        else {
+            printError("Failed to update errand status! Please try again.");
+        }
+
+        delete pstmt;
+        delete con;
+    }
+    catch (sql::SQLException& e) {
+        printError("Database error occurred! Please try again later.");
+        std::cerr << "SQL Error: " << e.what() << std::endl;
+        std::cerr << "Error Code: " << e.getErrorCode() << std::endl;
+    }
+    catch (std::exception& e) {
+        printError("An unexpected error occurred! Please try again.");
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+    catch (...) {
+        printError("A critical error occurred! Please contact support.");
+        std::cerr << "Unknown error occurred." << std::endl;
+    }
     
     std::cout << "\nPress Enter to continue...";
     std::cin.get();
-    viewAllErrands();
+    
+    try {
+        viewAllErrands();
+    }
+    catch (...) {
+        // If viewAllErrands fails, just continue without showing error
+        // to prevent infinite error loop
+    }
+}
+
+// ===== View pending errands only =====
+void viewPendingErrands() {
+    clearScreen();
+    printMenuTitle("Pending Errands");
+    
+    try {
+        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+        con->setSchema("erms");
+
+        sql::PreparedStatement* pstmt = con->prepareStatement(
+            "SELECT e.errand_id, u.name AS requester, e.description, e.pickup_loc, "
+            "e.dropoff_loc, e.distance, e.status, e.created_at, r.name AS runner "
+            "FROM errands e "
+            "LEFT JOIN users u ON e.requester_id = u.user_id "
+            "LEFT JOIN users r ON e.runner_id = r.user_id "
+            "WHERE e.status = 'Pending' "
+            "ORDER BY e.created_at DESC"
+        );
+        sql::ResultSet* res = pstmt->executeQuery();
+
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Requester", 15},
+            {"Runner", 15},
+            {"Description", 25},
+            {"Pickup", 15},
+            {"Dropoff", 15},
+            {"Distance", 10},
+            {"Status", 12},
+            {"Created At", 20}
+        };
+        std::vector<int> widths = {5, 15, 15, 25, 15, 15, 10, 12, 20};
+        
+        printTableHeader(columns);
+
+        bool hasData = false;
+        while (res->next()) {
+            hasData = true;
+            std::string runnerName = res->isNull("runner") ? "Unassigned" : res->getString("runner");
+            std::ostringstream distStream;
+            distStream << std::fixed << std::setprecision(2) << res->getDouble("distance");
+
+            std::vector<std::string> row = {
+                std::to_string(res->getInt("errand_id")),
+                truncateString(res->getString("requester"), 15),
+                truncateString(runnerName, 15),
+                truncateString(res->getString("description"), 25),
+                truncateString(res->getString("pickup_loc"), 15),
+                truncateString(res->getString("dropoff_loc"), 15),
+                distStream.str(),
+                truncateString(res->getString("status"), 12),
+                truncateString(res->getString("created_at"), 20)
+            };
+            printTableRow(row, widths);
+        }
+
+        if (!hasData) {
+            centerText("No pending errands found.");
+        }
+
+        printTableFooter(widths);
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+
+        delete res;
+        delete pstmt;
+        delete con;
+    }
+    catch (sql::SQLException& e) {
+        printError("Database error occurred!");
+        std::cerr << "SQL Error: " << e.what() << std::endl;
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+    }
+    catch (...) {
+        printError("An error occurred while loading errands!");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+    }
 }
 
 // ===== Assign errand to runner =====
 void assignErrandToRunner() {
-    viewAllErrands();
+    viewPendingErrands();
     int errandId, runnerId;
     
     while (true) {
@@ -274,6 +485,73 @@ void assignErrandToRunner() {
         else centerText("Invalid input! Please enter a valid errand ID or 0 to go back.");
     }
     
+    // Display available runners
+    try {
+        clearScreen();
+        printMenuTitle("Available Runners");
+        
+        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+        con->setSchema("erms");
+
+        sql::PreparedStatement* listStmt = con->prepareStatement(
+            "SELECT user_id, name, email, c_number FROM users WHERE role = 2"
+        );
+        sql::ResultSet* listRes = listStmt->executeQuery();
+
+        std::vector<std::pair<std::string, int>> columns = {
+            {"ID", 5},
+            {"Name", 20},
+            {"Email", 25},
+            {"Contact", 15}
+        };
+        std::vector<int> widths = {5, 20, 25, 15};
+        
+        printTableHeader(columns);
+
+        bool hasRunners = false;
+        while (listRes->next()) {
+            hasRunners = true;
+            std::vector<std::string> row = {
+                std::to_string(listRes->getInt("user_id")),
+                truncateString(listRes->getString("name"), 20),
+                truncateString(listRes->getString("email"), 25),
+                truncateString(listRes->getString("c_number"), 15)
+            };
+            printTableRow(row, widths);
+        }
+
+        if (!hasRunners) {
+            centerText("No runners found. Please register a runner first.");
+            delete listRes;
+            delete listStmt;
+            delete con;
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+
+        printTableFooter(widths);
+        std::cout << "\n";
+        
+        delete listRes;
+        delete listStmt;
+        delete con;
+    }
+    catch (sql::SQLException& e) {
+        printError("Database error occurred while loading runners!");
+        std::cerr << "SQL Error: " << e.what() << std::endl;
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+        return;
+    }
+    catch (...) {
+        printError("An error occurred while loading runners!");
+        std::cout << "\nPress Enter to continue...";
+        std::cin.get();
+        return;
+    }
+    
     while (true) {
         runnerId = getCenteredIntInput("Enter the runner's user ID (or 0 to go back): ");
         if (runnerId == 0) return; // Back to menu
@@ -281,28 +559,101 @@ void assignErrandToRunner() {
         else centerText("Invalid input! Please enter a valid runner ID or 0 to go back.");
     }
 
-    sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
-    sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
-    con->setSchema("erms");
+    try {
+        sql::mysql::MySQL_Driver* driver = sql::mysql::get_mysql_driver_instance();
+        sql::Connection* con = driver->connect("tcp://localhost:3306", "root", "");
+        con->setSchema("erms");
 
-    sql::PreparedStatement* pstmt = con->prepareStatement(
-        "UPDATE errands SET runner_id=?, status='Assigned' WHERE errand_id=?"
-    );
-    pstmt->setInt(1, runnerId);
-    pstmt->setInt(2, errandId);
-    int updated = pstmt->executeUpdate();
-    if (updated > 0) {
-        printSuccess("Errand assigned to runner successfully!");
+        // Verify errand exists and is Pending
+        sql::PreparedStatement* checkErrandStmt = con->prepareStatement(
+            "SELECT errand_id, status FROM errands WHERE errand_id=?"
+        );
+        checkErrandStmt->setInt(1, errandId);
+        sql::ResultSet* checkErrandRes = checkErrandStmt->executeQuery();
+        
+        if (!checkErrandRes->next()) {
+            printError("Errand not found! Please enter a valid errand ID.");
+            delete checkErrandRes;
+            delete checkErrandStmt;
+            delete con;
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        
+        std::string errandStatus = checkErrandRes->getString("status");
+        if (errandStatus != "Pending") {
+            printError("This errand is not pending! Only pending errands can be assigned to runners.");
+            delete checkErrandRes;
+            delete checkErrandStmt;
+            delete con;
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        delete checkErrandRes;
+        delete checkErrandStmt;
+
+        // Verify runner exists and has runner role
+        sql::PreparedStatement* checkRunnerStmt = con->prepareStatement(
+            "SELECT user_id, role FROM users WHERE user_id=? AND role=2"
+        );
+        checkRunnerStmt->setInt(1, runnerId);
+        sql::ResultSet* checkRunnerRes = checkRunnerStmt->executeQuery();
+        
+        if (!checkRunnerRes->next()) {
+            printError("Runner not found or user is not a runner! Please enter a valid runner ID.");
+            delete checkRunnerRes;
+            delete checkRunnerStmt;
+            delete con;
+            std::cout << "\nPress Enter to continue...";
+            std::cin.get();
+            return;
+        }
+        delete checkRunnerRes;
+        delete checkRunnerStmt;
+
+        // Assign errand to runner
+        sql::PreparedStatement* pstmt = con->prepareStatement(
+            "UPDATE errands SET runner_id=?, status='Assigned' WHERE errand_id=?"
+        );
+        pstmt->setInt(1, runnerId);
+        pstmt->setInt(2, errandId);
+        int updated = pstmt->executeUpdate();
+        
+        if (updated > 0) {
+            printSuccess("Errand assigned to runner successfully!");
+        }
+        else {
+            printError("Failed to assign errand! Please try again.");
+        }
+        
+        delete pstmt;
+        delete con;
     }
-    else {
-        printError("Errand or runner not found!");
+    catch (sql::SQLException& e) {
+        printError("Database error occurred! Please try again later.");
+        std::cerr << "SQL Error: " << e.what() << std::endl;
+        std::cerr << "Error Code: " << e.getErrorCode() << std::endl;
+    }
+    catch (std::exception& e) {
+        printError("An unexpected error occurred! Please try again.");
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+    catch (...) {
+        printError("A critical error occurred! Please contact support.");
+        std::cerr << "Unknown error occurred." << std::endl;
     }
     
     std::cout << "\nPress Enter to continue...";
     std::cin.get();
-    viewAllErrands();
-    delete pstmt;
-    delete con;
+    
+    try {
+        viewPendingErrands();
+    }
+    catch (...) {
+        // If viewPendingErrands fails, just continue without showing error
+    }
 }
 
 // ===== Register runner manually =====
@@ -601,10 +952,6 @@ void showMonthlyErrandsChart() {
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     };
 
-    // Calculate scaling factor (max bar width: 50 characters)
-    const int maxBarWidth = 50;
-    double scaleFactor = (maxCount > 0) ? static_cast<double>(maxBarWidth) / maxCount : 1.0;
-
     std::cout << "\n";
     centerText("Monthly Errands Ordered (All Time)");
     std::cout << "\n";
@@ -620,10 +967,8 @@ void showMonthlyErrandsChart() {
         // Create month label
         std::string monthLabel = monthNames[month] + " " + std::to_string(year);
         
-        // Calculate bar length with scaling
-        int barLength = static_cast<int>(count * scaleFactor + 0.5); // Round to nearest
-        if (barLength < 1 && count > 0) barLength = 1; // At least 1 char if count > 0
-        std::string barString(barLength, '#');
+        // Each # represents 1 parcel (no scaling)
+        std::string barString(count, '#');
 
         // Format and display
         std::ostringstream line;
@@ -634,7 +979,7 @@ void showMonthlyErrandsChart() {
     std::cout << "\n";
     centerText("========================================");
     std::cout << "\n";
-    centerText("Note: Bar length is proportional to maximum count");
+    centerText("Note: Each # represents 1 parcel");
     std::cout << "\nPress Enter to continue...";
     std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
     std::cin.get();

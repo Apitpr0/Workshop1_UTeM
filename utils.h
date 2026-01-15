@@ -80,8 +80,42 @@ inline void printSeparator(int width) {
 
 // ===== Validation functions =====
 inline bool isValidEmail(const std::string& email) {
+    // Basic regex pattern
     const std::regex pattern(R"(^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$)");
-    return std::regex_match(email, pattern);
+    if (!std::regex_match(email, pattern)) {
+        return false;
+    }
+    
+    // Find @ position
+    size_t atPos = email.find('@');
+    if (atPos == std::string::npos || atPos == 0) {
+        return false;
+    }
+    
+    // Check local part (before @)
+    std::string localPart = email.substr(0, atPos);
+    // Cannot start or end with dot
+    if (localPart[0] == '.' || localPart[localPart.length() - 1] == '.') {
+        return false;
+    }
+    // Cannot have consecutive dots
+    if (localPart.find("..") != std::string::npos) {
+        return false;
+    }
+    
+    // Check domain part (after @)
+    std::string domainPart = email.substr(atPos + 1);
+    // Cannot start or end with dot or hyphen
+    if (domainPart[0] == '.' || domainPart[domainPart.length() - 1] == '.' ||
+        domainPart[0] == '-' || domainPart[domainPart.length() - 1] == '-') {
+        return false;
+    }
+    // Cannot have consecutive dots
+    if (domainPart.find("..") != std::string::npos) {
+        return false;
+    }
+    
+    return true;
 }
 
 inline bool isValidName(const std::string& u) {
@@ -179,14 +213,43 @@ inline int getCenteredIntInput(const std::string& prompt, int width = -1) {
     int value;
     while (true) {
         centerInputPrompt(prompt, width);
-        if (std::cin >> value) {
-            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::string input;
+        std::getline(std::cin, input);
+        
+        // Check if input is empty
+        if (input.empty()) {
+            centerText("Invalid input! Please enter a valid number.");
+            continue;
+        }
+        
+        // Check if input contains only digits (allow negative numbers)
+        bool isValid = true;
+        size_t startIdx = 0;
+        if (input[0] == '-') {
+            startIdx = 1;
+            if (input.length() == 1) {
+                isValid = false; // Just a minus sign
+            }
+        }
+        
+        // Check for + sign or other invalid characters
+        if (input[0] == '+' || input.find_first_not_of("0123456789", startIdx) != std::string::npos) {
+            isValid = false;
+        }
+        
+        if (!isValid) {
+            centerText("Invalid input! Please enter a valid number (digits only, no + sign).");
+            continue;
+        }
+        
+        // Convert to integer
+        try {
+            value = std::stoi(input);
             return value;
         }
-        else {
-            std::cin.clear();
-            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
-            centerText("Invalid input! Please enter a valid number.");
+        catch (const std::exception&) {
+            centerText("Invalid input! Number is too large or invalid.");
+            continue;
         }
     }
 }
@@ -439,8 +502,24 @@ inline int getMenuChoice(int min, int max) {
     int choice;
     while (true) {
         centerInputPrompt("Enter choice: ");
-        if (std::cin >> choice) {
-            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        std::string input;
+        std::getline(std::cin, input);
+        
+        // Check if input is empty
+        if (input.empty()) {
+            printError("Invalid input. Enter a number between " + std::to_string(min) + " and " + std::to_string(max) + ".");
+            continue;
+        }
+        
+        // Check if input contains only digits (no +, -, or other characters)
+        if (input.find_first_not_of("0123456789") != std::string::npos) {
+            printError("Invalid input. Enter a number between " + std::to_string(min) + " and " + std::to_string(max) + " (digits only, no + or - sign).");
+            continue;
+        }
+        
+        // Convert to integer
+        try {
+            choice = std::stoi(input);
             if (choice >= min && choice <= max) {
                 return choice;
             }
@@ -448,9 +527,7 @@ inline int getMenuChoice(int min, int max) {
                 printError("Invalid input. Enter a number between " + std::to_string(min) + " and " + std::to_string(max) + ".");
             }
         }
-        else {
-            std::cin.clear();
-            std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
+        catch (const std::exception&) {
             printError("Invalid input. Enter a number between " + std::to_string(min) + " and " + std::to_string(max) + ".");
         }
     }
